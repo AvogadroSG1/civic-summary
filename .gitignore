@@ -1,0 +1,22 @@
+# Binary
+civic-summary
+dist/
+
+# Test
+coverage.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (may contain local paths)
+config.yaml
+!testdata/fixtures/config.yaml

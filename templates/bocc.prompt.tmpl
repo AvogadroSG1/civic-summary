@@ -1,0 +1,118 @@
+You are an expert civic engagement analyst specializing in local government meeting analysis.
+
+**Task**: Generate a comprehensive "Citizen Summary" for a {{.BodyName}} meeting.
+
+**Meeting Details**:
+- Date: {{.MeetingDateHuman}}
+- Meeting Type: {{.MeetingType}}
+- Video: {{.VideoURL}}
+
+**Source Materials**:
+
+1. **MEETING TRANSCRIPT**:
+The following is a timestamped transcript from the meeting (SRT format with timestamps).
+
+```
+{{.Transcript}}
+```
+
+**Output Requirements**:
+
+Generate a markdown document with the following EXACT structure. Output ONLY the markdown - no preamble, no explanations, no meta-commentary. Start directly with the YAML frontmatter.
+
+---
+date: {{.TodayDate}}
+author: {{.Author}}
+tags:
+{{- range .Tags}}
+  - {{.}}
+{{- end}}
+source: {{.VideoURL}}
+meeting_date: {{.MeetingDateISO}}
+---
+
+# {{.BodyName}} Meeting - Citizen Summary
+**Date:** {{.MeetingDateHuman}}
+**Meeting Type:** {{.MeetingType}}
+**Video:** [YouTube Recording]({{.VideoURL}})
+
+---
+
+## 1. Updates
+
+[Administrative announcements, county updates, commissioner reports]
+- Include subsections with timestamps: **[HH:MM:SS-HH:MM:SS]** or **[HH:MM:SS]**
+- Cover: county programs, recognitions, proclamations, departmental updates
+- Format with H3 headings for major topics within this section
+
+---
+
+## 2. Public Comments
+
+[Summarize each public comment with speaker name, topic, and key points]
+- Include timestamps for each speaker
+- If no public comments, state: "No public comments were recorded during this meeting."
+- Otherwise, summarize main points of each speaker
+
+---
+
+## 3. Actions Taken
+
+[Document all votes, approvals, ordinances, resolutions, financial decisions]
+- Categorize by type (e.g., "Consent Agenda", "Contract Awards", "Budget Items")
+- Include vote outcomes, dollar amounts, and key details
+- Use H3 headings for each action category
+- Include timestamps
+
+---
+
+## 4. Input Requested from Commissioners
+
+[Any matters where commissioner direction, feedback, or guidance was explicitly requested]
+- If no input was requested, state: "No specific input was requested from the Commissioners during this meeting."
+- Otherwise, document what guidance was sought and any discussion
+- Include timestamps
+
+---
+
+## 5. Critical Discussions
+
+[Deep analysis of 2-4 most important policy discussions, decisions, or topics]
+- Focus on items with significant community impact for Washington County residents
+- Include:
+  - What happened / what was discussed
+  - Why this matters for county residents
+  - Potential impacts on services, taxes, or quality of life
+  - Context and background
+- Use H3 headings for each critical discussion
+- Include comprehensive timestamps
+- Provide "Why this matters:" analysis for each topic
+
+---
+
+## Conclusion
+
+[Brief summary highlighting key takeaways and next meeting information if mentioned]
+
+---
+
+*{{if .FooterText}}{{.FooterText}}{{else}}This citizen summary was created from the official meeting video and transcript. For complete details, watch the full meeting recording or review official minutes when published.{{end}}*
+
+
+**CRITICAL INSTRUCTIONS**:
+
+1. **OUTPUT FORMAT**: Start your response with exactly "---" (the YAML frontmatter opener). Do not include ANY text before this. No "Here is", no "I'll create", no explanations. JUST the markdown document.
+
+2. **Completeness**: Ensure COMPLETE coverage of all topics discussed in the meeting.
+
+3. **Timestamps**: Include timestamps in format **[HH:MM:SS-HH:MM:SS]** or **[HH:MM:SS]** for ALL major topics.
+
+4. **Audience**: Write for general Washington County residents, not government insiders. Explain jargon and acronyms.
+
+5. **Accuracy**: Use exact dollar amounts, dates, proper names, and vote counts from the transcript.
+
+6. **Analysis**: In "Critical Discussions" provide citizen-focused analysis explaining "why this matters."
+
+7. **Structure**: Follow the exact markdown format shown above. Maintain consistent heading levels.
+
+Begin the document now (start with ---):

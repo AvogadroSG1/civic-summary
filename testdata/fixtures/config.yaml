@@ -1,0 +1,35 @@
+output_dir: /tmp/civic-summary-test
+log_retention_days: 90
+max_retries: 3
+backoff_delays: [1, 2, 3]
+
+tools:
+  ytdlp: yt-dlp
+  whisper: /usr/local/bin/whisper-cli
+  whisper_model: /usr/local/share/whisper/ggml-medium.en.bin
+  claude: claude
+
+bodies:
+  hagerstown:
+    name: "Hagerstown City Council"
+    playlist_id: PLJXxCe9GA2fEf4TIVzTH2O-kFJlS8VVgQ
+    output_subdir: "Hagerstown Town Council - Citizen Summary"
+    filename_pattern: "Hagerstown-City-Council-{{.MeetingDate}}-Citizen-Summary"
+    title_date_regex: '^([A-Z][a-z]+ \d{1,2},? \d{4})'
+    tags: [City-Council, Hagerstown, Civic-Engagement, Local-Government, Citizen-Summary]
+    prompt_template: hagerstown.prompt.tmpl
+    meeting_types: [Regular Session, Work Session]
+    author: Peter O'Connor
+    footer_text: "This citizen summary was created from the official meeting video and transcript. For complete details, watch the full meeting recording or review official minutes when published."
+
+  bocc:
+    name: "Washington County Board of County Commissioners"
+    playlist_id: PL7X-j0EwreAd_6kV3IjxO-_XNwDNn0esS
+    output_subdir: "Washington County BOCC - Citizen Summary"
+    filename_pattern: "BOCC-{{.MeetingDate}}-Citizen-Summary"
+    title_date_regex: '- ([A-Z][a-z]+ \d{1,2}, \d{4})$'
+    tags: [BOCC, Washington-County, Civic-Engagement, Local-Government, Citizen-Summary]
+    prompt_template: bocc.prompt.tmpl
+    meeting_types: [Meeting, Evening Meeting, Special Meeting]
+    author: Peter O'Connor
+    footer_text: "This citizen summary was created from the official meeting video and transcript. For complete details, watch the full meeting recording or review official minutes when published."

@@ -1,0 +1,16 @@
+version: "2"
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gocritic
+    - misspell
+formatters:
+  enable:
+    - gofmt
+issues:
+  exclude-dirs:
+    - testdata
