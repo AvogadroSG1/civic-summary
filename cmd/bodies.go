@@ -26,7 +26,7 @@ var bodiesListCmd = &cobra.Command{
 		output.Info("Configured bodies:")
 		for slug, body := range cfg.Bodies {
 			fmt.Printf("  %s: %s\n", slug, body.Name)
-			fmt.Printf("    Playlist: %s\n", body.PlaylistID)
+			fmt.Printf("    Source: %s\n", body.DiscoveryURL())
 			fmt.Printf("    Template: %s\n", body.PromptTemplate)
 			fmt.Println()
 		}
@@ -53,7 +53,13 @@ var bodiesShowCmd = &cobra.Command{
 
 		output.Banner(body.Name)
 		fmt.Printf("  Slug:             %s\n", body.Slug)
-		fmt.Printf("  Playlist ID:      %s\n", body.PlaylistID)
+		if body.PlaylistID != "" {
+			fmt.Printf("  Playlist ID:      %s\n", body.PlaylistID)
+		}
+		if body.VideoSourceURL != "" {
+			fmt.Printf("  Video Source URL:  %s\n", body.VideoSourceURL)
+		}
+		fmt.Printf("  Discovery URL:    %s\n", body.DiscoveryURL())
 		fmt.Printf("  Output Subdir:    %s\n", body.OutputSubdir)
 		fmt.Printf("  Filename Pattern: %s\n", body.FilenamePattern)
 		fmt.Printf("  Date Regex:       %s\n", body.TitleDateRegex)

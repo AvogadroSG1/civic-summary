@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/AvogadroSG1/civic-summary/internal/config"
+	"github.com/AvogadroSG1/civic-summary/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -95,4 +96,59 @@ func TestValidate_NoBodies(t *testing.T) {
 	err := cfg.Validate()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one body")
+}
+
+func TestValidate_VideoSourceURLOnly(t *testing.T) {
+	cfg := &config.Config{
+		OutputDir: "/tmp",
+		Bodies: map[string]domain.Body{
+			"test": {
+				VideoSourceURL:  "https://www.youtube.com/@example/streams",
+				OutputSubdir:    "Test Output",
+				FilenamePattern: "Test-{{.MeetingDate}}",
+				TitleDateRegex:  `^(\d{4}-\d{2}-\d{2})`,
+				PromptTemplate:  "test.prompt.tmpl",
+				Tags:            []string{"Test"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	assert.NoError(t, err)
+}
+
+func TestValidate_NeitherPlaylistIDNorVideoSourceURL(t *testing.T) {
+	cfg := &config.Config{
+		OutputDir: "/tmp",
+		Bodies: map[string]domain.Body{
+			"test": {
+				OutputSubdir:    "Test Output",
+				FilenamePattern: "Test-{{.MeetingDate}}",
+				TitleDateRegex:  `^(\d{4}-\d{2}-\d{2})`,
+				PromptTemplate:  "test.prompt.tmpl",
+				Tags:            []string{"Test"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "playlist_id or video_source_url is required")
+}
+
+func TestValidate_BothPlaylistIDAndVideoSourceURL(t *testing.T) {
+	cfg := &config.Config{
+		OutputDir: "/tmp",
+		Bodies: map[string]domain.Body{
+			"test": {
+				PlaylistID:      "PLtest123",
+				VideoSourceURL:  "https://www.youtube.com/@example/streams",
+				OutputSubdir:    "Test Output",
+				FilenamePattern: "Test-{{.MeetingDate}}",
+				TitleDateRegex:  `^(\d{4}-\d{2}-\d{2})`,
+				PromptTemplate:  "test.prompt.tmpl",
+				Tags:            []string{"Test"},
+			},
+		},
+	}
+	err := cfg.Validate()
+	assert.NoError(t, err)
 }

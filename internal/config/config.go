@@ -101,8 +101,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("at least one body must be configured")
 	}
 	for slug, body := range c.Bodies {
-		if body.PlaylistID == "" {
-			return fmt.Errorf("body %q: playlist_id is required", slug)
+		if body.PlaylistID == "" && body.VideoSourceURL == "" {
+			return fmt.Errorf("body %q: playlist_id or video_source_url is required", slug)
 		}
 		if body.OutputSubdir == "" {
 			return fmt.Errorf("body %q: output_subdir is required", slug)

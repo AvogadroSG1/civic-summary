@@ -7,6 +7,7 @@ type Body struct {
 	Slug            string   `yaml:"slug" mapstructure:"slug"`
 	Name            string   `yaml:"name" mapstructure:"name"`
 	PlaylistID      string   `yaml:"playlist_id" mapstructure:"playlist_id"`
+	VideoSourceURL  string   `yaml:"video_source_url" mapstructure:"video_source_url"`
 	OutputSubdir    string   `yaml:"output_subdir" mapstructure:"output_subdir"`
 	FilenamePattern string   `yaml:"filename_pattern" mapstructure:"filename_pattern"`
 	TitleDateRegex  string   `yaml:"title_date_regex" mapstructure:"title_date_regex"`
@@ -17,8 +18,12 @@ type Body struct {
 	FooterText      string   `yaml:"footer_text" mapstructure:"footer_text"`
 }
 
-// PlaylistURL returns the full YouTube playlist URL for this body.
-func (b Body) PlaylistURL() string {
+// DiscoveryURL returns the URL used to discover videos for this body.
+// If VideoSourceURL is set, it takes precedence over PlaylistID.
+func (b Body) DiscoveryURL() string {
+	if b.VideoSourceURL != "" {
+		return b.VideoSourceURL
+	}
 	return "https://www.youtube.com/playlist?list=" + b.PlaylistID
 }
 

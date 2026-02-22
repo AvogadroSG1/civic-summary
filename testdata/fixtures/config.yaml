@@ -25,6 +25,7 @@ bodies:
   bocc:
     name: "Washington County Board of County Commissioners"
     playlist_id: PL7X-j0EwreAd_6kV3IjxO-_XNwDNn0esS
+    video_source_url: "https://www.youtube.com/@washingtoncomd/streams"
     output_subdir: "Washington County BOCC - Citizen Summary"
     filename_pattern: "BOCC-{{.MeetingDate}}-Citizen-Summary"
     title_date_regex: '- ([A-Z][a-z]+ \d{1,2}, \d{4})$'

@@ -15,7 +15,7 @@ import (
 	"github.com/AvogadroSG1/civic-summary/internal/executor"
 )
 
-// DiscoveryService finds unprocessed meetings from YouTube playlists.
+// DiscoveryService finds unprocessed meetings from YouTube video sources.
 type DiscoveryService struct {
 	ytdlp *executor.YtDlpExecutor
 	cfg   *config.Config
@@ -33,13 +33,13 @@ func (s *DiscoveryService) DiscoverNewMeetings(ctx context.Context, body domain.
 
 	slog.Info("discovering new videos",
 		"body", body.Slug,
-		"playlist", body.PlaylistID,
+		"source", body.DiscoveryURL(),
 		"year_filter", yearFilter,
 	)
 
-	entries, err := s.ytdlp.ListPlaylist(ctx, body.PlaylistURL(), yearFilter)
+	entries, err := s.ytdlp.ListPlaylist(ctx, body.DiscoveryURL(), yearFilter)
 	if err != nil {
-		return nil, fmt.Errorf("listing playlist for %s: %w", body.Slug, err)
+		return nil, fmt.Errorf("listing videos for %s: %w", body.Slug, err)
 	}
 
 	slog.Info("found videos in playlist",

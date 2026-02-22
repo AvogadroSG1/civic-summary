@@ -11,8 +11,8 @@ import (
 
 var discoverCmd = &cobra.Command{
 	Use:   "discover",
-	Short: "Find unprocessed videos from a body's playlist",
-	Long:  `Phase 1 only: lists videos in the playlist that don't have finalized summaries.`,
+	Short: "Find unprocessed videos from a body's video source",
+	Long:  `Phase 1 only: lists videos from the configured source that don't have finalized summaries.`,
 	Example: `  civic-summary discover --body=hagerstown
   civic-summary discover --body=bocc`,
 	RunE: func(cmd *cobra.Command, args []string) error {
