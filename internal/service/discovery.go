@@ -144,6 +144,7 @@ func parseFlexibleDate(s string) (time.Time, error) {
 	cleaned = strings.TrimSpace(cleaned)
 
 	formats := []string{
+		"2006-01-02",
 		"January 2, 2006",
 		"January 2 2006",
 		"January 02, 2006",
