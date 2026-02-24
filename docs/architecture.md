@@ -4,24 +4,14 @@ This document describes the internal architecture of civic-summary for contribut
 
 ## System Context
 
-```
-                    ┌──────────────┐
-                    │   YouTube    │
-                    │  (Playlists) │
-                    └──────┬───────┘
-                           │ video metadata + captions
-                           ▼
-┌──────────┐    ┌──────────────────┐    ┌──────────────┐
-│  yt-dlp  │◀───│  civic-summary   │───▶│   Obsidian   │
-│          │    │                  │    │  (Markdown)  │
-└──────────┘    └──────────────────┘    └──────────────┘
-                    │            │
-            ┌───────┘            └───────┐
-            ▼                            ▼
-     ┌──────────┐                 ┌──────────┐
-     │  Whisper  │                │  Claude   │
-     │(optional) │                │   CLI     │
-     └──────────┘                 └──────────┘
+```mermaid
+flowchart TD
+    YT["YouTube\n(Playlists)"] -- "video metadata + captions" --> CS
+
+    CS["**civic-summary**"] --> OBS["Obsidian\n(Markdown)"]
+    CS <--> YTDLP["yt-dlp"]
+    CS <--> W["Whisper\n(optional)"]
+    CS <--> CL["Claude CLI"]
 ```
 
 civic-summary is a CLI tool that coordinates three external tools:
@@ -106,36 +96,48 @@ Checks:
 
 ## Domain Model
 
-```
-┌───────────┐     ┌───────────┐     ┌──────────────┐
-│   Body    │     │  Meeting  │     │  Transcript  │
-│           │     │           │     │              │
-│ slug      │◀────│ bodySlug  │     │ content      │
-│ name      │     │ videoID   │     │ path         │
-│ playlist  │     │ title     │     │ source       │
-│ template  │     │ date      │     │ (captions/   │
-│ tags      │     │ type      │     │  whisper)    │
-│ regex     │     │           │     │              │
-└───────────┘     └─────┬─────┘     └──────────────┘
-                        │
-                        ▼
-                  ┌───────────┐     ┌──────────────────┐
-                  │  Summary  │     │ ValidationResult │
-                  │           │     │                  │
-                  │ content   │────▶│ issues[]         │
-                  │ path      │     │   severity       │
-                  │           │     │   message        │
-                  └───────────┘     └──────────────────┘
-                        │
-                        ▼
-                  ┌─────────────────┐
-                  │ QuarantineEntry │
-                  │                 │
-                  │ videoID         │
-                  │ error           │
-                  │ retryCount      │
-                  │ quarantinedAt   │
-                  └─────────────────┘
+```mermaid
+classDiagram
+    class Body {
+        slug
+        name
+        playlist
+        template
+        tags
+        regex
+    }
+    class Meeting {
+        videoID
+        title
+        date
+        type
+        bodySlug
+    }
+    class Transcript {
+        content
+        path
+        source (captions/whisper)
+    }
+    class Summary {
+        content
+        path
+    }
+    class ValidationResult {
+        issues[]
+        severity
+        message
+    }
+    class QuarantineEntry {
+        videoID
+        error
+        retryCount
+        quarantinedAt
+    }
+
+    Meeting --> Body : bodySlug
+    Meeting --> Summary
+    Summary --> ValidationResult
+    Meeting --> QuarantineEntry : on failure
 ```
 
 - **Body** — A government entity (e.g., city council). Loaded from config. Immutable at runtime.

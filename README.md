@@ -6,24 +6,18 @@ civic-summary watches YouTube playlists for new government meeting recordings, t
 
 ## How It Works
 
-```
-YouTube Playlist
-       │
-       ▼
-┌─────────────┐    ┌────────────────┐    ┌─────────────┐
-│  Discovery   │───▶│ Transcription  │───▶│  Analysis    │
-│  (yt-dlp)    │    │ (captions /    │    │ (Claude CLI) │
-│              │    │  whisper)      │    │              │
-└─────────────┘    └────────────────┘    └──────┬──────┘
-                                                │
-       ┌────────────────────────────────────────┘
-       ▼
-┌─────────────┐    ┌────────────────┐    ┌─────────────┐
-│  CrossRef    │───▶│  Validation    │───▶│  Output      │
-│  (wikilinks) │    │ (frontmatter,  │    │ (Obsidian    │
-│              │    │  sections,     │    │  markdown)   │
-│              │    │  word count)   │    │              │
-└─────────────┘    └────────────────┘    └─────────────┘
+```mermaid
+flowchart LR
+    YT[YouTube Playlist] --> D
+
+    D["**Discovery**\n_(yt-dlp)_"]
+    T["**Transcription**\n_(captions / whisper)_"]
+    A["**Analysis**\n_(Claude CLI)_"]
+    CR["**CrossRef**\n_(wikilinks)_"]
+    V["**Validation**\n_(frontmatter, sections,\nword count)_"]
+    O["**Output**\n_(Obsidian markdown)_"]
+
+    D --> T --> A --> CR --> V --> O
 ```
 
 Each stage is independently runnable via CLI commands, or the full pipeline can be triggered with a single `process` command.
