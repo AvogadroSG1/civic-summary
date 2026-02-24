@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
@@ -55,7 +56,11 @@ func Info(format string, args ...interface{}) {
 }
 
 // NotifyMacOS sends a macOS notification via osascript.
+// On non-macOS platforms this is a no-op.
 func NotifyMacOS(title, message, sound string) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
 	if sound == "" {
 		sound = "default"
 	}

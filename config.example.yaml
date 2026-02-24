@@ -1,0 +1,135 @@
+# civic-summary configuration
+#
+# Copy this file to ~/.civic-summary/config.yaml and edit for your setup.
+# All fields support environment variable overrides with the CIVIC_SUMMARY_ prefix.
+#
+# Config file search order:
+#   1. --config flag (if provided)
+#   2. ~/.civic-summary/config.yaml
+#   3. ./config.yaml (for development)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Global Settings
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Root directory where all output is written. Each body gets a subdirectory.
+# Override: CIVIC_SUMMARY_OUTPUT_DIR
+output_dir: /path/to/your/output
+
+# Number of days to retain processing logs before cleanup.
+# Default: 90
+log_retention_days: 90
+
+# Maximum retry attempts for failed pipeline stages.
+# Default: 3
+max_retries: 3
+
+# Seconds to wait between retries (exponential backoff).
+# Default: [5, 20, 60]
+backoff_delays: [5, 20, 60]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# External Tools
+# ──────────────────────────────────────────────────────────────────────────────
+
+tools:
+  # YouTube video/caption downloader.
+  # Install: brew install yt-dlp (macOS) or pip install yt-dlp
+  # Override: CIVIC_SUMMARY_YTDLP
+  ytdlp: yt-dlp
+
+  # Claude Code CLI for AI-powered analysis.
+  # Install: See https://docs.anthropic.com/en/docs/claude-code
+  # Override: CIVIC_SUMMARY_CLAUDE
+  claude: claude
+
+  # Whisper speech-to-text (optional — used as fallback when captions unavailable).
+  # Install: brew install whisper-cpp (macOS) or build from source
+  # Override: CIVIC_SUMMARY_WHISPER
+  whisper: ""
+
+  # Path to Whisper model file (required if whisper is set).
+  # Override: CIVIC_SUMMARY_WHISPER_MODEL
+  whisper_model: ""
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Government Bodies
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Each key under "bodies" is a slug used in CLI commands (e.g., --body=my-city-council).
+# Adding a new body requires only a config block here and a prompt template file
+# in ~/.civic-summary/templates/ — no code changes needed.
+
+bodies:
+
+  # ── Example: Your City Council ──────────────────────────────────────────────
+  my-city-council:
+
+    # Display name used in summaries and output messages.
+    name: "My City Council"
+
+    # YouTube playlist ID containing meeting recordings.
+    # Find this in the playlist URL: youtube.com/playlist?list=THIS_PART
+    playlist_id: PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+    # Alternative: use a channel URL instead of a playlist ID.
+    # If both are set, video_source_url takes precedence.
+    # video_source_url: "https://www.youtube.com/@yourcity/streams"
+
+    # Subdirectory name under output_dir for this body's files.
+    output_subdir: "My City Council - Citizen Summary"
+
+    # Pattern for generated summary filenames. {{.MeetingDate}} is replaced
+    # with the ISO date (YYYY-MM-DD).
+    filename_pattern: "My-City-Council-{{.MeetingDate}}-Citizen-Summary"
+
+    # Regex to extract the meeting date from YouTube video titles.
+    # The first capture group must contain the date string.
+    #
+    # Common patterns:
+    #   "January 15, 2025 - City Council"  →  '^([A-Z][a-z]+ \d{1,2},? \d{4})'
+    #   "Council Meeting - January 15, 2025"  →  '- ([A-Z][a-z]+ \d{1,2}, \d{4})$'
+    #   "2025-01-15 Regular Session"  →  '^(\d{4}-\d{2}-\d{2})'
+    title_date_regex: '^([A-Z][a-z]+ \d{1,2},? \d{4})'
+
+    # Tags applied to every summary's YAML frontmatter.
+    tags:
+      - City-Council
+      - My-City
+      - Civic-Engagement
+      - Local-Government
+      - Citizen-Summary
+
+    # Prompt template filename (must exist in templates directory).
+    # See docs/prompt-template-guide.md for creating custom templates.
+    prompt_template: my-city-council.prompt.tmpl
+
+    # Meeting type labels used for classification.
+    meeting_types: [Regular Session, Work Session, Special Meeting]
+
+    # Author name for summary frontmatter.
+    author: Your Name
+
+    # Footer text appended to every summary.
+    footer_text: >-
+      This citizen summary was created from the official meeting video
+      and transcript. For complete details, watch the full meeting
+      recording or review official minutes when published.
+
+  # ── Example: County Board of Commissioners (commented out) ─────────────────
+  # Uncomment and customize to add a second government body.
+  #
+  # my-county-bocc:
+  #   name: "My County Board of County Commissioners"
+  #   playlist_id: PLyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+  #   output_subdir: "My County BOCC - Citizen Summary"
+  #   filename_pattern: "BOCC-{{.MeetingDate}}-Citizen-Summary"
+  #   title_date_regex: '- ([A-Z][a-z]+ \d{1,2}, \d{4})$'
+  #   tags: [BOCC, My-County, Civic-Engagement, Local-Government, Citizen-Summary]
+  #   prompt_template: bocc.prompt.tmpl
+  #   meeting_types: [Meeting, Evening Meeting, Special Meeting]
+  #   author: Your Name
+  #   footer_text: >-
+  #     This citizen summary was created from the official meeting video
+  #     and transcript. For complete details, watch the full meeting
+  #     recording or review official minutes when published.
