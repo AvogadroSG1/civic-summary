@@ -60,6 +60,34 @@ func TestCrossReferenceService_AddCrossReferences(t *testing.T) {
 	assert.Contains(t, result, "[[Hagerstown-City-Council-2025-01-07-Citizen-Summary|January 7, 2025]]")
 }
 
+func TestCrossReferenceService_SequencedTarget(t *testing.T) {
+	cfg := crossrefConfig(t)
+	body, _ := cfg.GetBody("hagerstown")
+
+	// Create a sequenced summary file (e.g., from a same-date disambiguation).
+	targetDir := filepath.Join(cfg.FinalizedDir(body), "20250107")
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(targetDir, "Hagerstown-City-Council-2025-01-07-Citizen-Summary-1.md"),
+		[]byte("# Sequenced Summary"), 0o644,
+	))
+
+	svc := service.NewCrossReferenceService(cfg)
+
+	meeting := domain.Meeting{
+		VideoID:     "abc123",
+		MeetingDate: time.Date(2025, 2, 4, 0, 0, 0, 0, time.UTC),
+		BodySlug:    "hagerstown",
+	}
+
+	content := "The council referenced the January 7, 2025 session."
+
+	result := svc.AddCrossReferences(content, meeting, body)
+
+	// Should resolve to the sequenced filename.
+	assert.Contains(t, result, "[[Hagerstown-City-Council-2025-01-07-Citizen-Summary-1|January 7, 2025]]")
+}
+
 func TestCrossReferenceService_NoMatchingDates(t *testing.T) {
 	cfg := crossrefConfig(t)
 	body, _ := cfg.GetBody("hagerstown")

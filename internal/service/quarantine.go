@@ -34,6 +34,7 @@ func (s *QuarantineService) Quarantine(body domain.Body, meeting domain.Meeting,
 		VideoID:       meeting.VideoID,
 		MeetingDate:   meeting.ISODate(),
 		BodySlug:      body.Slug,
+		Sequence:      meeting.Sequence,
 		Error:         errMsg,
 		QuarantinedAt: time.Now(),
 		RetryCount:    0,
@@ -58,7 +59,7 @@ func (s *QuarantineService) Quarantine(body domain.Body, meeting domain.Meeting,
 	}
 
 	// Update manifest.
-	if err := s.addToManifest(body, meeting.VideoID, meeting.ISODate()); err != nil {
+	if err := s.addToManifest(body, meeting.VideoID, meeting.ISODate(), meeting.Sequence); err != nil {
 		slog.Warn("failed to update quarantine manifest", "error", err)
 	}
 
@@ -131,7 +132,7 @@ func (s *QuarantineService) Remove(body domain.Body, videoID string) error {
 }
 
 // addToManifest adds an entry to the quarantine manifest.
-func (s *QuarantineService) addToManifest(body domain.Body, videoID, meetingDate string) error {
+func (s *QuarantineService) addToManifest(body domain.Body, videoID, meetingDate string, sequence int) error {
 	manifest, err := s.loadManifest(body)
 	if err != nil {
 		manifest = domain.NewQuarantineManifest()
@@ -140,6 +141,7 @@ func (s *QuarantineService) addToManifest(body domain.Body, videoID, meetingDate
 	manifest.Items[videoID] = domain.QuarantineManifestEntry{
 		MeetingDate: meetingDate,
 		BodySlug:    body.Slug,
+		Sequence:    sequence,
 		Added:       time.Now(),
 	}
 

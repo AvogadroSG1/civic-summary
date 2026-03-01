@@ -56,6 +56,49 @@ func TestIndexService_UpdateIndex(t *testing.T) {
 	assert.Contains(t, indexStr, "2025-01-07")
 }
 
+func TestIndexService_MultipleSummariesPerDate(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		OutputDir: tmpDir,
+		Bodies: map[string]domain.Body{
+			"test": {
+				Slug:         "test",
+				Name:         "Test Body",
+				OutputSubdir: "Test",
+			},
+		},
+	}
+
+	body, _ := cfg.GetBody("test")
+	finalizedDir := cfg.FinalizedDir(body)
+
+	// Create a date folder with two sequenced summary files.
+	dir := filepath.Join(finalizedDir, "20250204")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "Summary-2025-02-04-1.md"),
+		[]byte("# Summary 1"), 0o644,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "Summary-2025-02-04-2.md"),
+		[]byte("# Summary 2"), 0o644,
+	))
+
+	svc := service.NewIndexService(cfg)
+	err := svc.UpdateIndex(body)
+	require.NoError(t, err)
+
+	indexPath := filepath.Join(finalizedDir, "index.md")
+	content, err := os.ReadFile(indexPath)
+	require.NoError(t, err)
+
+	indexStr := string(content)
+	// Both summaries should appear in the index.
+	assert.Contains(t, indexStr, "2 meetings")
+	assert.Contains(t, indexStr, "Summary-2025-02-04-1")
+	assert.Contains(t, indexStr, "Summary-2025-02-04-2")
+}
+
 func TestIndexService_EmptyDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &config.Config{

@@ -8,6 +8,7 @@ type QuarantineEntry struct {
 	VideoID       string    `json:"video_id"`
 	MeetingDate   string    `json:"meeting_date"`
 	BodySlug      string    `json:"body_slug"`
+	Sequence      int       `json:"sequence"`
 	Error         string    `json:"error"`
 	QuarantinedAt time.Time `json:"quarantined_at"`
 	RetryCount    int       `json:"retry_count"`
@@ -23,6 +24,7 @@ type QuarantineManifest struct {
 type QuarantineManifestEntry struct {
 	MeetingDate string    `json:"meeting_date"`
 	BodySlug    string    `json:"body_slug"`
+	Sequence    int       `json:"sequence"`
 	Added       time.Time `json:"added"`
 }
 
