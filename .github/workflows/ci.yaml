@@ -36,10 +36,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          install-mode: goinstall
+      - uses: golangci/golangci-lint-action@v7
 
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
