@@ -3,9 +3,11 @@ package executor
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 )
 
-// WhisperExecutor wraps whisper.cpp operations for audio transcription.
+// WhisperExecutor wraps OpenAI whisper CLI operations for audio transcription.
 type WhisperExecutor struct {
 	commander Commander
 	binary    string
@@ -21,19 +23,26 @@ func NewWhisperExecutor(commander Commander, binary string, model string) *Whisp
 	}
 }
 
-// Transcribe runs whisper.cpp on an audio file and outputs SRT.
-// The outputBase should be the path without extension; whisper appends ".srt".
+// Transcribe runs OpenAI whisper on an audio file and outputs SRT.
+// The outputBase should be the path without extension (e.g., /tmp/video123).
+// OpenAI whisper names output after the input file: <output_dir>/<audio_stem>.srt
 func (w *WhisperExecutor) Transcribe(ctx context.Context, audioPath string, outputBase string) (string, error) {
+	outputDir := filepath.Dir(outputBase)
+
 	_, err := w.commander.Execute(ctx, w.binary,
-		"-m", w.model,
-		"-f", audioPath,
-		"--output-srt",
-		"--output-file", outputBase,
+		audioPath,
+		"--model", w.model,
+		"--output_format", "srt",
+		"--output_dir", outputDir,
 		"--language", "en",
 	)
 	if err != nil {
 		return "", fmt.Errorf("whisper transcription: %w", err)
 	}
 
-	return outputBase + ".srt", nil
+	// OpenAI whisper names output as <output_dir>/<input_stem>.srt
+	audioStem := strings.TrimSuffix(filepath.Base(audioPath), filepath.Ext(audioPath))
+	srtPath := filepath.Join(outputDir, audioStem+".srt")
+
+	return srtPath, nil
 }

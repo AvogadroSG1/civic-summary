@@ -130,17 +130,16 @@ func TestTranscriptionService_Transcribe_CaptionsFail_WhisperFallback(t *testing
 	mock.OnCommand(downloadAudioKey, &executor.CommandResult{}, nil)
 
 	// Whisper: transcription succeeds.
-	outputBase := filepath.Join(tmpDir, meeting.VideoID)
-	whisperKey := fmt.Sprintf("whisper-cli -m model.bin -f %s --output-srt --output-file %s --language en", audioPath, outputBase)
+	whisperKey := fmt.Sprintf("whisper-cli %s --model medium --output_format srt --output_dir %s --language en", audioPath, tmpDir)
 	mock.OnCommand(whisperKey, &executor.CommandResult{}, nil)
 
-	// Pre-create the SRT file that whisper would produce.
-	whisperSrtPath := outputBase + ".srt"
+	// Pre-create the SRT file that OpenAI whisper would produce (named after input stem).
+	whisperSrtPath := filepath.Join(tmpDir, meeting.VideoID+".srt")
 	srtContent := "1\n00:00:01,000 --> 00:00:05,000\nWhisper transcription output.\n"
 	require.NoError(t, os.WriteFile(whisperSrtPath, []byte(srtContent), 0o644))
 
 	ytdlp := executor.NewYtDlpExecutor(mock, "yt-dlp")
-	whisper := executor.NewWhisperExecutor(mock, "whisper-cli", "model.bin")
+	whisper := executor.NewWhisperExecutor(mock, "whisper-cli", "medium")
 	svc := service.NewTranscriptionService(ytdlp, whisper)
 
 	transcript, err := svc.Transcribe(context.Background(), meeting, tmpDir)
