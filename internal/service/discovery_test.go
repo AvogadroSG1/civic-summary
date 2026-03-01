@@ -192,6 +192,115 @@ func TestDiscoveryService_BOCC_SkipsNonDateTitles(t *testing.T) {
 	assert.Empty(t, meetings)
 }
 
+func TestDiscoveryService_SameDateDisambiguation_TwoMeetings(t *testing.T) {
+	mock := executor.NewMockCommander()
+	mock.DefaultResult = &executor.CommandResult{
+		Stdout: "vid_b|Board of County Commissioners Regular Meeting - February 24, 2025\nvid_a|Board of County Commissioners Work Session - February 24, 2025\n",
+	}
+
+	cfg := boccConfig(t)
+	ytdlp := executor.NewYtDlpExecutor(mock, "yt-dlp")
+	discovery := service.NewDiscoveryService(ytdlp, cfg)
+
+	body, _ := cfg.GetBody("bocc")
+	meetings, err := discovery.DiscoverNewMeetings(context.Background(), body)
+	require.NoError(t, err)
+
+	require.Len(t, meetings, 2)
+
+	// Both on same date, sorted by VideoID: vid_a=1, vid_b=2.
+	byID := make(map[string]domain.Meeting)
+	for _, m := range meetings {
+		byID[m.VideoID] = m
+	}
+	assert.Equal(t, 1, byID["vid_a"].Sequence)
+	assert.Equal(t, "-1", byID["vid_a"].SequenceSuffix())
+	assert.Equal(t, 2, byID["vid_b"].Sequence)
+	assert.Equal(t, "-2", byID["vid_b"].SequenceSuffix())
+}
+
+func TestDiscoveryService_SameDateDisambiguation_ThreeMeetings(t *testing.T) {
+	mock := executor.NewMockCommander()
+	mock.DefaultResult = &executor.CommandResult{
+		Stdout: "vid_c|BOCC Meeting - February 24, 2025\nvid_a|BOCC Session - February 24, 2025\nvid_b|BOCC Hearing - February 24, 2025\n",
+	}
+
+	cfg := boccConfig(t)
+	ytdlp := executor.NewYtDlpExecutor(mock, "yt-dlp")
+	discovery := service.NewDiscoveryService(ytdlp, cfg)
+
+	body, _ := cfg.GetBody("bocc")
+	meetings, err := discovery.DiscoverNewMeetings(context.Background(), body)
+	require.NoError(t, err)
+
+	require.Len(t, meetings, 3)
+
+	byID := make(map[string]domain.Meeting)
+	for _, m := range meetings {
+		byID[m.VideoID] = m
+	}
+	// Sorted by VideoID: vid_a=1, vid_b=2, vid_c=3.
+	assert.Equal(t, 1, byID["vid_a"].Sequence)
+	assert.Equal(t, 2, byID["vid_b"].Sequence)
+	assert.Equal(t, 3, byID["vid_c"].Sequence)
+}
+
+func TestDiscoveryService_SameDateDisambiguation_SoloMeeting(t *testing.T) {
+	mock := executor.NewMockCommander()
+	mock.DefaultResult = &executor.CommandResult{
+		Stdout: "vid1|Board of County Commissioners Regular Meeting - January 7, 2025\nvid_a|BOCC Session - February 24, 2025\nvid_b|BOCC Hearing - February 24, 2025\n",
+	}
+
+	cfg := boccConfig(t)
+	ytdlp := executor.NewYtDlpExecutor(mock, "yt-dlp")
+	discovery := service.NewDiscoveryService(ytdlp, cfg)
+
+	body, _ := cfg.GetBody("bocc")
+	meetings, err := discovery.DiscoverNewMeetings(context.Background(), body)
+	require.NoError(t, err)
+
+	require.Len(t, meetings, 3)
+
+	byID := make(map[string]domain.Meeting)
+	for _, m := range meetings {
+		byID[m.VideoID] = m
+	}
+	// Solo meeting on Jan 7 → sequence 0, no suffix.
+	assert.Equal(t, 0, byID["vid1"].Sequence)
+	assert.Equal(t, "", byID["vid1"].SequenceSuffix())
+	// Pair on Feb 24 → sequences 1 and 2.
+	assert.Equal(t, 1, byID["vid_a"].Sequence)
+	assert.Equal(t, 2, byID["vid_b"].Sequence)
+}
+
+func TestDiscoveryService_SameDateDisambiguation_OneProcessed(t *testing.T) {
+	mock := executor.NewMockCommander()
+	mock.DefaultResult = &executor.CommandResult{
+		Stdout: "vid_a|BOCC Session - February 24, 2025\nvid_b|BOCC Hearing - February 24, 2025\n",
+	}
+
+	cfg := boccConfig(t)
+	body, _ := cfg.GetBody("bocc")
+
+	// Mark vid_a (sequence 1) as already processed.
+	summaryDir := filepath.Join(cfg.FinalizedDir(body), "20250224")
+	require.NoError(t, os.MkdirAll(summaryDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(summaryDir, "BOCC-2025-02-24-Citizen-Summary-1.md"),
+		[]byte("# Existing"), 0o644,
+	))
+
+	ytdlp := executor.NewYtDlpExecutor(mock, "yt-dlp")
+	discovery := service.NewDiscoveryService(ytdlp, cfg)
+	meetings, err := discovery.DiscoverNewMeetings(context.Background(), body)
+	require.NoError(t, err)
+
+	// Only vid_b (sequence 2) should remain.
+	require.Len(t, meetings, 1)
+	assert.Equal(t, "vid_b", meetings[0].VideoID)
+	assert.Equal(t, 2, meetings[0].Sequence)
+}
+
 func TestDiscoveryService_BOCC_MeetingTypeVariants(t *testing.T) {
 	mock := executor.NewMockCommander()
 	mock.DefaultResult = &executor.CommandResult{

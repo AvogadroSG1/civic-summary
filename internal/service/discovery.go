@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,7 +28,8 @@ func NewDiscoveryService(ytdlp *executor.YtDlpExecutor, cfg *config.Config) *Dis
 }
 
 // DiscoverNewMeetings finds all unprocessed meetings for a body.
-// It lists the playlist, parses dates from titles, and filters out already-processed meetings.
+// It lists the playlist, parses dates from titles, assigns sequence numbers
+// for same-date disambiguation, and filters out already-processed meetings.
 func (s *DiscoveryService) DiscoverNewMeetings(ctx context.Context, body domain.Body) ([]domain.Meeting, error) {
 	yearFilter := fmt.Sprintf("%d", time.Now().Year())
 
@@ -52,7 +54,8 @@ func (s *DiscoveryService) DiscoverNewMeetings(ctx context.Context, body domain.
 		return nil, fmt.Errorf("compiling date regex for %s: %w", body.Slug, err)
 	}
 
-	var meetings []domain.Meeting
+	// Phase 1: Parse all entries into meetings.
+	var allParsed []domain.Meeting
 	for _, entry := range entries {
 		meeting, err := s.parseMeeting(entry, body, dateRegex)
 		if err != nil {
@@ -63,15 +66,23 @@ func (s *DiscoveryService) DiscoverNewMeetings(ctx context.Context, body domain.
 			)
 			continue
 		}
+		allParsed = append(allParsed, meeting)
+	}
 
+	// Phase 2: Assign sequence numbers for same-date disambiguation.
+	assignSequences(allParsed)
+
+	// Phase 3: Filter out already-processed meetings.
+	var meetings []domain.Meeting
+	for _, meeting := range allParsed {
 		if s.isProcessed(meeting, body) {
 			slog.Info("already processed",
 				"body", body.Slug,
 				"date", meeting.ISODate(),
+				"sequence", meeting.Sequence,
 			)
 			continue
 		}
-
 		meetings = append(meetings, meeting)
 	}
 
@@ -125,10 +136,39 @@ func (s *DiscoveryService) SummaryPath(meeting domain.Meeting, body domain.Body)
 }
 
 // buildFilename generates the output filename from the body's pattern.
+// Appends sequence suffix for same-date disambiguation (e.g., "-1", "-2").
 func buildFilename(meeting domain.Meeting, body domain.Body) string {
 	name := body.FilenamePattern
 	name = strings.ReplaceAll(name, "{{.MeetingDate}}", meeting.ISODate())
-	return name
+	return name + meeting.SequenceSuffix()
+}
+
+// assignSequences sets Sequence on each meeting for same-date disambiguation.
+// Solo meetings get Sequence=0. Multiple meetings on the same date are sorted
+// by VideoID for determinism and assigned 1, 2, 3, etc.
+func assignSequences(meetings []domain.Meeting) {
+	// Group by ISO date.
+	groups := make(map[string][]int) // date -> indices
+	for i := range meetings {
+		date := meetings[i].ISODate()
+		groups[date] = append(groups[date], i)
+	}
+
+	for _, indices := range groups {
+		if len(indices) == 1 {
+			meetings[indices[0]].Sequence = 0
+			continue
+		}
+
+		// Sort indices by VideoID for deterministic ordering.
+		sort.Slice(indices, func(a, b int) bool {
+			return meetings[indices[a]].VideoID < meetings[indices[b]].VideoID
+		})
+
+		for seq, idx := range indices {
+			meetings[idx].Sequence = seq + 1
+		}
+	}
 }
 
 // parseFlexibleDate tries multiple date formats.

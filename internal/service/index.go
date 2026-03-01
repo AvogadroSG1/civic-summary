@@ -46,24 +46,37 @@ func (s *IndexService) UpdateIndex(body domain.Body) error {
 	// Sort descending (most recent first).
 	sort.Sort(sort.Reverse(sort.StringSlice(folders)))
 
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "# %s - Meeting Index\n\n", body.Name)
-	fmt.Fprintf(&sb, "*%d meetings processed*\n\n", len(folders))
+	// Collect all summary entries across all folders.
+	type indexEntry struct {
+		summaryName string
+		dateStr     string
+	}
+	var allEntries []indexEntry
 
 	for _, folder := range folders {
-		// Find the summary .md file in this folder.
+		// Find all summary .md files in this folder.
 		mdFiles, err := filepath.Glob(filepath.Join(finalizedDir, folder, "*.md"))
 		if err != nil || len(mdFiles) == 0 {
 			continue
 		}
 
-		// Use the first .md file found.
-		summaryName := strings.TrimSuffix(filepath.Base(mdFiles[0]), ".md")
-
 		// Format the date from folder name.
 		dateStr := fmt.Sprintf("%s-%s-%s", folder[:4], folder[4:6], folder[6:8])
 
-		fmt.Fprintf(&sb, "- [[%s|%s]]\n", summaryName, dateStr)
+		// List every .md file in the folder (handles same-date disambiguation).
+		sort.Strings(mdFiles)
+		for _, mdFile := range mdFiles {
+			summaryName := strings.TrimSuffix(filepath.Base(mdFile), ".md")
+			allEntries = append(allEntries, indexEntry{summaryName, dateStr})
+		}
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# %s - Meeting Index\n\n", body.Name)
+	fmt.Fprintf(&sb, "*%d meetings processed*\n\n", len(allEntries))
+
+	for _, entry := range allEntries {
+		fmt.Fprintf(&sb, "- [[%s|%s]]\n", entry.summaryName, entry.dateStr)
 	}
 
 	if err := os.WriteFile(indexPath, []byte(sb.String()), 0o644); err != nil {
