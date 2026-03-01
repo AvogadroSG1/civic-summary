@@ -20,3 +20,9 @@ Thumbs.db
 # Config (may contain local paths)
 config.yaml
 !testdata/fixtures/config.yaml
+
+# Generated output
+output/
+
+# Claude Code
+.claude/
