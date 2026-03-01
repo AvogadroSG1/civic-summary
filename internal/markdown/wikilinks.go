@@ -3,7 +3,9 @@ package markdown
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -52,16 +54,42 @@ func AddWikilinks(content string, cfg CrossReferenceConfig) string {
 		targetName := strings.ReplaceAll(cfg.FilenamePattern, "{{.ISODate}}", isoDate)
 		targetName = strings.ReplaceAll(targetName, "{{.MeetingDate}}", isoDate)
 
-		// Check if the target file exists.
+		// Check if the target file exists (including sequence-suffixed variants).
 		dateFolder := parsed.Format("20060102")
-		targetPath := fmt.Sprintf("%s/%s/%s.md", cfg.BaseDir, dateFolder, targetName)
-		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		resolved, ok := resolveTarget(cfg.BaseDir, dateFolder, targetName)
+		if !ok {
 			return match
 		}
 
 		// Create wikilink preserving original text as display name.
-		return fmt.Sprintf("[[%s|%s]]", targetName, match)
+		return fmt.Sprintf("[[%s|%s]]", resolved, match)
 	})
+}
+
+// resolveTarget finds a summary file in the date folder, handling sequence suffixes.
+// It first checks for an exact match (solo meeting, Sequence=0), then falls back
+// to globbing for sequenced files (e.g., "Name-1.md", "Name-2.md").
+// Returns the resolved filename (without .md) and true if found.
+func resolveTarget(baseDir, dateFolder, targetName string) (string, bool) {
+	folderPath := filepath.Join(baseDir, dateFolder)
+
+	// Check exact match first (solo meeting).
+	exactPath := filepath.Join(folderPath, targetName+".md")
+	if _, err := os.Stat(exactPath); err == nil {
+		return targetName, true
+	}
+
+	// Fall back to glob for sequenced files.
+	pattern := filepath.Join(folderPath, targetName+"-*.md")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return "", false
+	}
+
+	// Sort alphabetically so "-1" comes before "-2".
+	sort.Strings(matches)
+	resolved := strings.TrimSuffix(filepath.Base(matches[0]), ".md")
+	return resolved, true
 }
 
 // parseHumanDate attempts to parse a human-readable date string.

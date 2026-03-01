@@ -199,6 +199,7 @@ func (p *PipelineOrchestrator) retryQuarantined(ctx context.Context, body domain
 		meeting := domain.Meeting{
 			VideoID:  entry.VideoID,
 			BodySlug: body.Slug,
+			Sequence: entry.Sequence,
 		}
 		// Parse the meeting date.
 		if date, err := parseFlexibleDate(entry.MeetingDate); err == nil {

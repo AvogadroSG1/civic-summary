@@ -59,6 +59,54 @@ func TestAddWikilinks_WithExistingFile(t *testing.T) {
 	assert.Contains(t, result, "[[Test-2025-02-04-Summary|February 04, 2025]]")
 }
 
+func TestAddWikilinks_SequencedFile(t *testing.T) {
+	// A single sequenced file (sequence 1) should resolve via glob fallback.
+	tmpDir := t.TempDir()
+	dateDir := filepath.Join(tmpDir, "20250204")
+	require.NoError(t, os.MkdirAll(dateDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dateDir, "Test-2025-02-04-Summary-1.md"),
+		[]byte("# Test"), 0o644,
+	))
+
+	content := "Reference to February 04, 2025 meeting."
+	cfg := markdown.CrossReferenceConfig{
+		BaseDir:         tmpDir,
+		FilenamePattern: "Test-{{.MeetingDate}}-Summary",
+		SelfDate:        time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	result := markdown.AddWikilinks(content, cfg)
+	assert.Contains(t, result, "[[Test-2025-02-04-Summary-1|February 04, 2025]]")
+}
+
+func TestAddWikilinks_MultipleSequencedFiles(t *testing.T) {
+	// When multiple sequenced files exist, link to the first (sequence 1).
+	tmpDir := t.TempDir()
+	dateDir := filepath.Join(tmpDir, "20250204")
+	require.NoError(t, os.MkdirAll(dateDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dateDir, "Test-2025-02-04-Summary-1.md"),
+		[]byte("# Test 1"), 0o644,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dateDir, "Test-2025-02-04-Summary-2.md"),
+		[]byte("# Test 2"), 0o644,
+	))
+
+	content := "Reference to February 04, 2025 meeting."
+	cfg := markdown.CrossReferenceConfig{
+		BaseDir:         tmpDir,
+		FilenamePattern: "Test-{{.MeetingDate}}-Summary",
+		SelfDate:        time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	result := markdown.AddWikilinks(content, cfg)
+	// Should link to sequence 1 (alphabetically first).
+	assert.Contains(t, result, "[[Test-2025-02-04-Summary-1|February 04, 2025]]")
+	assert.NotContains(t, result, "Summary-2")
+}
+
 func TestAddWikilinks_MultipleReferences(t *testing.T) {
 	tmpDir := t.TempDir()
 

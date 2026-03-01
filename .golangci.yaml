@@ -8,9 +8,9 @@ linters:
     - ineffassign
     - gocritic
     - misspell
+  exclusions:
+    paths:
+      - testdata
 formatters:
   enable:
     - gofmt
-issues:
-  exclude-dirs:
-    - testdata
