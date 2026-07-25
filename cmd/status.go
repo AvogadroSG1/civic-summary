@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/AvogadroSG1/civic-summary/internal/domain"
+	"github.com/AvogadroSG1/civic-summary/internal/llm"
 	"github.com/AvogadroSG1/civic-summary/internal/output"
 	"github.com/AvogadroSG1/civic-summary/internal/service"
 	"github.com/spf13/cobra"
@@ -14,8 +16,15 @@ import (
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show processing status for configured bodies",
+	Long: `Reports finalized and quarantined summary counts per body, and checks
+that the configured language model is reachable.
+
+The model check sends one minimal request per distinct provider and model, which
+catches a bad API key or model name before a run wastes a transcription. Pass
+--skip-llm-check to stay offline.`,
 	Example: `  civic-summary status
-  civic-summary status --body=hagerstown`,
+  civic-summary status --body=hagerstown
+  civic-summary status --skip-llm-check`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
@@ -34,6 +43,7 @@ var statusCmd = &cobra.Command{
 		}
 
 		quarantine := service.NewQuarantineService(cfg)
+		skipLLM, _ := cmd.Flags().GetBool("skip-llm-check")
 
 		for slug := range bodies {
 			body, _ := cfg.GetBody(slug)
@@ -52,11 +62,39 @@ var statusCmd = &cobra.Command{
 					e.VideoID, e.MeetingDate, e.RetryCount, e.Error)
 			}
 
+			reportLLM(cmd.Context(), cfg.ResolveLLM(body), skipLLM)
+
 			fmt.Println()
 		}
 
 		return nil
 	},
+}
+
+// reportLLM prints a body's resolved model configuration and, unless skipped,
+// the result of a live reachability probe.
+func reportLLM(ctx context.Context, llmCfg domain.LLMConfig, skip bool) {
+	fmt.Printf("  Model:               %s\n", llmCfg.Describe())
+	if llmCfg.BaseURL != "" {
+		fmt.Printf("  Endpoint:            %s\n", llmCfg.BaseURL)
+	}
+
+	if skip {
+		fmt.Printf("  Model check:         skipped\n")
+		return
+	}
+
+	client, err := llm.New(llmCfg)
+	if err != nil {
+		output.Failure("Model check: %v", err)
+		return
+	}
+	if err := client.Ping(ctx); err != nil {
+		output.Failure("Model check: %v", err)
+		return
+	}
+
+	output.Success("Model check: reachable")
 }
 
 func countSummaries(dir string) int {
@@ -77,5 +115,6 @@ func countSummaries(dir string) int {
 
 func init() {
 	statusCmd.Flags().String("body", "", "body slug (default: all)")
+	statusCmd.Flags().Bool("skip-llm-check", false, "skip the language model reachability probe")
 	rootCmd.AddCommand(statusCmd)
 }
