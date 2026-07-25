@@ -10,9 +10,11 @@ PASS=0
 FAIL=0
 WARN=0
 
-pass() { ((PASS++)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
-fail() { ((FAIL++)); printf "  \033[31m✗\033[0m %s\n" "$1"; }
-warn() { ((WARN++)); printf "  \033[33m⚠\033[0m %s\n" "$1"; }
+# Counters use arithmetic assignment rather than ((VAR++)): the latter evaluates
+# to the pre-increment value, so the first call returns 1 and set -e aborts.
+pass() { PASS=$((PASS + 1)); printf "  \033[32m✓\033[0m %s\n" "$1"; }
+fail() { FAIL=$((FAIL + 1)); printf "  \033[31m✗\033[0m %s\n" "$1"; }
+warn() { WARN=$((WARN + 1)); printf "  \033[33m⚠\033[0m %s\n" "$1"; }
 info() { printf "  \033[34mℹ\033[0m %s\n" "$1"; }
 
 echo "civic-summary prerequisite check"
@@ -42,11 +44,19 @@ else
     fail "yt-dlp not found — install: brew install yt-dlp (macOS) or pip install yt-dlp"
 fi
 
-# Claude CLI
-if command -v claude &>/dev/null; then
-    pass "claude CLI"
+# Language model API key
+#
+# Summaries are generated over HTTP against whichever provider the config's llm
+# block names, so the definitive check is 'civic-summary status'. All this script
+# can do without parsing YAML is confirm that some credential is exported.
+if [ -n "${CIVIC_SUMMARY_LLM_API_KEY_ENV:-}" ] && [ -n "${!CIVIC_SUMMARY_LLM_API_KEY_ENV:-}" ]; then
+    pass "LLM API key set in \$${CIVIC_SUMMARY_LLM_API_KEY_ENV}"
+elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+    pass "LLM API key set in \$ANTHROPIC_API_KEY"
+elif [ -n "${OPENAI_API_KEY:-}" ]; then
+    pass "LLM API key set in \$OPENAI_API_KEY"
 else
-    fail "claude CLI not found — install: see https://docs.anthropic.com/en/docs/claude-code"
+    fail "No LLM API key found — export the variable named by llm.api_key_env (default \$ANTHROPIC_API_KEY or \$OPENAI_API_KEY)"
 fi
 
 echo ""
@@ -103,6 +113,8 @@ if [ -d "$templates_dir" ]; then
 else
     warn "Templates directory missing: $templates_dir — run 'make setup' to create it"
 fi
+
+info "Run 'civic-summary status' to verify the configured model is reachable"
 
 echo ""
 
