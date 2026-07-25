@@ -126,7 +126,7 @@ Done.`
 	assert.True(t, hasWordCountError, "Expected word count error")
 }
 
-func TestValidationService_ClaudeMetaCommentary(t *testing.T) {
+func TestValidationService_MetaCommentary(t *testing.T) {
 	content := `Based on the transcript, here is the summary.
 
 # Title

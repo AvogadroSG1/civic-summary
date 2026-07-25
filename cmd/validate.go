@@ -13,7 +13,7 @@ var validateCmd = &cobra.Command{
 	Use:   "validate <file>",
 	Short: "Validate a summary file against quality requirements",
 	Long: `Phase 5 only: checks frontmatter, required sections, word count,
-timestamps, and Claude meta-commentary.`,
+timestamps, and model meta-commentary.`,
 	Example: `  civic-summary validate summary.md --body=hagerstown
   civic-summary validate *.md --body=bocc`,
 	Args: cobra.MinimumNArgs(1),

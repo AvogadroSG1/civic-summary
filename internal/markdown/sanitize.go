@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// claudeMetaPatterns are regex patterns that detect Claude's
-// meta-commentary that should not appear in the final summary.
-var claudeMetaPatterns = []*regexp.Regexp{
+// metaPatterns are regex patterns that detect model meta-commentary that should
+// not appear in the final summary.
+var metaPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^Based on the`),
 	regexp.MustCompile(`(?i)^I'll `),
 	regexp.MustCompile(`(?i)^I will `),
@@ -22,17 +22,17 @@ var claudeMetaPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^After reviewing `),
 }
 
-// HasClaudeMetaCommentary checks if the content contains any Claude meta-commentary
-// patterns that indicate the model is "talking about" the document rather than
-// producing the document itself.
-func HasClaudeMetaCommentary(content string) bool {
+// HasMetaCommentary checks if the content contains any meta-commentary patterns
+// that indicate the model is "talking about" the document rather than producing
+// the document itself.
+func HasMetaCommentary(content string) bool {
 	lines := strings.Split(content, "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		for _, pattern := range claudeMetaPatterns {
+		for _, pattern := range metaPatterns {
 			if pattern.MatchString(trimmed) {
 				return true
 			}
@@ -41,7 +41,7 @@ func HasClaudeMetaCommentary(content string) bool {
 	return false
 }
 
-// Sanitize removes Claude meta-commentary lines from the beginning of content.
+// Sanitize removes model meta-commentary lines from the beginning of content.
 // It strips any lines before the first frontmatter delimiter that match
 // meta-commentary patterns.
 func Sanitize(content string) string {

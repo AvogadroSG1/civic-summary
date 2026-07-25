@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHasClaudeMetaCommentary(t *testing.T) {
+func TestHasMetaCommentary(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
@@ -25,7 +25,7 @@ func TestHasClaudeMetaCommentary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, markdown.HasClaudeMetaCommentary(tt.content))
+			assert.Equal(t, tt.want, markdown.HasMetaCommentary(tt.content))
 		})
 	}
 }
