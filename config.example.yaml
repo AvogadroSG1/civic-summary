@@ -38,11 +38,6 @@ tools:
   # Override: CIVIC_SUMMARY_YTDLP
   ytdlp: yt-dlp
 
-  # Claude Code CLI for AI-powered analysis.
-  # Install: See https://docs.anthropic.com/en/docs/claude-code
-  # Override: CIVIC_SUMMARY_CLAUDE
-  claude: claude
-
   # Whisper speech-to-text (optional — used as fallback when captions unavailable).
   # Install: brew install whisper-cpp (macOS) or build from source
   # Override: CIVIC_SUMMARY_WHISPER
@@ -51,6 +46,70 @@ tools:
   # Path to Whisper model file (required if whisper is set).
   # Override: CIVIC_SUMMARY_WHISPER_MODEL
   whisper_model: ""
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Language Model
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# Summaries are generated over HTTP, so any Anthropic-compatible (/v1/messages)
+# or OpenAI-compatible (/v1/chat/completions) endpoint works: the first-party
+# APIs, gateways such as OpenRouter, Groq, or Together, and self-hosted servers
+# such as Ollama, vLLM, or LM Studio.
+#
+# The API key is never stored here — api_key_env names the environment variable
+# to read it from.
+
+llm:
+  # Wire protocol to speak: anthropic | openai
+  # Override: CIVIC_SUMMARY_LLM_PROVIDER
+  provider: anthropic
+
+  # Model identifier, passed to the provider verbatim.
+  # Override: CIVIC_SUMMARY_LLM_MODEL
+  model: claude-opus-5
+
+  # Endpoint override. Leave empty for the provider's own API. Set this to point
+  # at a gateway or a local server, e.g. http://localhost:11434/v1 for Ollama.
+  # Override: CIVIC_SUMMARY_LLM_BASE_URL
+  base_url: ""
+
+  # Environment variable holding the API key.
+  # Defaults to ANTHROPIC_API_KEY or OPENAI_API_KEY based on the provider.
+  # Override: CIVIC_SUMMARY_LLM_API_KEY_ENV
+  api_key_env: ANTHROPIC_API_KEY
+
+  # Maximum tokens in the response. Models that reason before answering spend
+  # part of this budget on reasoning, so leave headroom above the summary length.
+  # Default: 16000 · Override: CIVIC_SUMMARY_LLM_MAX_TOKENS
+  max_tokens: 16000
+
+  # Which output-limit field to send (openai provider only).
+  # max_completion_tokens is current; use max_tokens for older self-hosted
+  # servers that do not recognise it.
+  # Default: max_completion_tokens · Override: CIVIC_SUMMARY_LLM_MAX_TOKENS_FIELD
+  max_tokens_field: max_completion_tokens
+
+  # Per-request timeout, covering SDK-level retries. Meeting transcripts are
+  # long, so this is generous by default.
+  # Default: 900
+  timeout_seconds: 900
+
+  # How many times the provider SDK retries rate limits and 5xx responses.
+  # Default: 2
+  max_retries: 2
+
+  # Stream the response. Streaming avoids HTTP timeouts on long summaries; turn
+  # it off only for compatible servers with unreliable SSE support.
+  # Default: true
+  stream: true
+
+  # Optional system message. Empty sends none, which keeps the entire rendered
+  # prompt template as a single user message.
+  system_prompt: ""
+
+  # Sampling temperature. Leave this commented out: current Claude models
+  # (Opus 5, Sonnet 5, Opus 4.8/4.7) reject sampling parameters with HTTP 400.
+  # temperature: 0.2
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Government Bodies
@@ -116,6 +175,14 @@ bodies:
       and transcript. For complete details, watch the full meeting
       recording or review official minutes when published.
 
+    # Optional per-body override of the global llm block. Only the keys you
+    # list are overridden; everything else is inherited. Useful when one body's
+    # meetings are long enough to need a bigger context window, or short enough
+    # to run on a cheaper model.
+    # llm:
+    #   model: claude-sonnet-5
+    #   max_tokens: 32000
+
   # ── Example: County Board of Commissioners (commented out) ─────────────────
   # Uncomment and customize to add a second government body.
   #
@@ -133,3 +200,5 @@ bodies:
   #     This citizen summary was created from the official meeting video
   #     and transcript. For complete details, watch the full meeting
   #     recording or review official minutes when published.
+  #   llm:
+  #     model: claude-sonnet-5

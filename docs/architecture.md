@@ -11,14 +11,17 @@ flowchart TD
     CS["**civic-summary**"] --> OBS["Obsidian\n(Markdown)"]
     CS <--> YTDLP["yt-dlp"]
     CS <--> W["Whisper\n(optional)"]
-    CS <--> CL["Claude CLI"]
+    CS <--> LLM["LLM API\n(Anthropic- or\nOpenAI-compatible)"]
 ```
 
-civic-summary is a CLI tool that coordinates three external tools:
+civic-summary is a CLI tool that coordinates two external binaries and one HTTP API:
 
 - **yt-dlp** — Downloads video metadata and captions from YouTube playlists
 - **Whisper** (optional) — Transcribes audio when captions are unavailable
-- **Claude CLI** — Generates citizen-friendly summaries from transcripts
+- **An LLM API** — Generates citizen-friendly summaries from transcripts. Either
+  wire protocol is supported (Anthropic `/v1/messages` or OpenAI
+  `/v1/chat/completions`) at any base URL, so first-party APIs, gateways, and
+  self-hosted servers are all reachable through the same two clients.
 
 Output is Obsidian-compatible markdown with YAML frontmatter and wikilinks.
 
@@ -58,12 +61,26 @@ First attempts to download auto-generated captions via yt-dlp. If no captions ar
 |---|---|
 | **Purpose** | Generate a citizen-friendly markdown summary |
 | **Service** | `internal/service/analysis.go` |
-| **Executor** | `internal/executor/claude.go` |
+| **Client** | `internal/llm` (`anthropic.go`, `openai.go`) |
 | **Input** | `domain.Meeting` + `domain.Transcript` + `domain.Body` |
 | **Output** | `domain.Summary` (raw markdown content) |
 | **Failure** | Fatal — the core value of the pipeline |
 
-Renders the body's prompt template with meeting data and transcript, then sends it to Claude CLI via stdin. The response is sanitized to remove any meta-commentary preamble Claude may add before the frontmatter.
+Renders the body's prompt template with meeting data and transcript, then sends the
+whole rendered template as the user message. The response is sanitized to remove any
+meta-commentary preamble the model may add before the frontmatter.
+
+The client is resolved per body via `service.LLMClientFor`, because a body may
+override the global `llm` block with its own provider, model, or endpoint. Requests
+stream by default and are accumulated client-side: summaries run long, so
+`max_tokens` has to be generous, and a non-streaming request that large risks an
+HTTP timeout.
+
+Failures are classified into `llm.Kind` values (authentication, model not found,
+context window exceeded, invalid request, rate limited, provider error, transport).
+The first four report `Permanent() == true`, which `retry.Do` uses to fail fast —
+without it, a bad API key would re-download and re-transcribe the video on every
+attempt.
 
 ### Stage 4: Cross-Reference
 
@@ -92,7 +109,7 @@ Checks:
 - All required sections present (Updates, Citizen Comments, Actions Taken, etc.)
 - Minimum word count
 - Timestamp format compliance
-- No Claude meta-commentary leaking through
+- No model meta-commentary leaking through
 
 ## Domain Model
 

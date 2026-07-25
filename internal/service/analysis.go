@@ -11,19 +11,24 @@ import (
 	"time"
 
 	"github.com/AvogadroSG1/civic-summary/internal/domain"
-	"github.com/AvogadroSG1/civic-summary/internal/executor"
+	"github.com/AvogadroSG1/civic-summary/internal/llm"
 	"github.com/AvogadroSG1/civic-summary/internal/markdown"
 )
 
-// AnalysisService generates meeting summaries using Claude CLI.
+// LLMClientFor returns the language-model client to use for a body. Bodies can
+// override the global provider and model, so the client is resolved per body
+// rather than once per run.
+type LLMClientFor func(body domain.Body) (llm.Client, error)
+
+// AnalysisService generates meeting summaries with a language model.
 type AnalysisService struct {
-	claude      *executor.ClaudeExecutor
+	clientFor   LLMClientFor
 	templateDir string
 }
 
 // NewAnalysisService creates a new AnalysisService.
-func NewAnalysisService(claude *executor.ClaudeExecutor, templateDir string) *AnalysisService {
-	return &AnalysisService{claude: claude, templateDir: templateDir}
+func NewAnalysisService(clientFor LLMClientFor, templateDir string) *AnalysisService {
+	return &AnalysisService{clientFor: clientFor, templateDir: templateDir}
 }
 
 // PromptData holds all data injected into a prompt template.
@@ -42,25 +47,32 @@ type PromptData struct {
 	FooterText       string
 }
 
-// Analyze sends the meeting transcript to Claude and returns the generated summary.
+// Analyze sends the meeting transcript to the configured model and returns the
+// generated summary.
 func (s *AnalysisService) Analyze(ctx context.Context, meeting domain.Meeting, transcript domain.Transcript, body domain.Body) (domain.Summary, error) {
+	client, err := s.clientFor(body)
+	if err != nil {
+		return domain.Summary{}, fmt.Errorf("building llm client: %w", err)
+	}
+
 	prompt, err := s.buildPrompt(meeting, transcript, body)
 	if err != nil {
 		return domain.Summary{}, fmt.Errorf("building prompt: %w", err)
 	}
 
-	slog.Info("analyzing meeting with Claude",
+	slog.Info("analyzing meeting",
 		"video_id", meeting.VideoID,
 		"body", body.Slug,
+		"model", client.Describe(),
 		"transcript_words", transcript.WordCount(),
 	)
 
-	rawOutput, err := s.claude.Analyze(ctx, prompt)
+	rawOutput, err := client.Complete(ctx, prompt)
 	if err != nil {
-		return domain.Summary{}, fmt.Errorf("claude analysis: %w", err)
+		return domain.Summary{}, fmt.Errorf("analysis: %w", err)
 	}
 
-	// Sanitize Claude's output (remove meta-commentary preamble).
+	// Models sometimes prefix the document with meta-commentary; strip it.
 	content := markdown.Sanitize(rawOutput)
 
 	return domain.Summary{

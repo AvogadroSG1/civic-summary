@@ -7,7 +7,14 @@ tools:
   ytdlp: yt-dlp
   whisper: /usr/local/bin/whisper-cli
   whisper_model: /usr/local/share/whisper/ggml-medium.en.bin
-  claude: claude
+
+llm:
+  provider: anthropic
+  model: claude-opus-5
+  api_key_env: CIVIC_SUMMARY_TEST_API_KEY
+  max_tokens: 16000
+  timeout_seconds: 600
+  system_prompt: "Global system prompt."
 
 bodies:
   hagerstown:
@@ -34,3 +41,7 @@ bodies:
     meeting_types: [Meeting, Evening Meeting, Special Meeting]
     author: Peter O'Connor
     footer_text: "This citizen summary was created from the official meeting video and transcript. For complete details, watch the full meeting recording or review official minutes when published."
+    llm:
+      model: claude-sonnet-5
+      max_tokens: 32000
+      system_prompt: ""

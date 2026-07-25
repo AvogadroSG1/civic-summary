@@ -1,6 +1,6 @@
 # Prompt Template Guide
 
-This guide explains how to create and customize prompt templates for civic-summary. Each government body uses a prompt template to instruct Claude on how to generate meeting summaries.
+This guide explains how to create and customize prompt templates for civic-summary. Each government body uses a prompt template to instruct the language model on how to generate meeting summaries.
 
 ## Template Variables
 
@@ -78,7 +78,7 @@ cp templates/hagerstown.prompt.tmpl ~/.civic-summary/templates/my-council.prompt
 
 ### Step 2: Customize the Sections
 
-The template is a prompt that instructs Claude on what to produce. The key sections to customize are:
+The template is a prompt that instructs the model on what to produce. The key sections to customize are:
 
 **Meeting context** — Adjust the role and body-specific language:
 ```
@@ -129,7 +129,7 @@ Review the output and iterate on the template as needed.
 
 ### Section Structure
 
-Keep the numbered section structure (1-5) consistent. Claude follows it reliably:
+Keep the numbered section structure (1-5) consistent. Models follow it reliably:
 
 1. **Updates** — Administrative/informational items
 2. **Citizen/Public Comments** — Public testimony
@@ -153,7 +153,7 @@ Include timestamps in format **[HH:MM:SS-HH:MM:SS]** or **[HH:MM:SS]** for ALL m
 
 ### Output Format Control
 
-The `CRITICAL INSTRUCTIONS` section at the end of the template is important — it prevents Claude from adding preamble text before the markdown. Always include:
+The `CRITICAL INSTRUCTIONS` section at the end of the template is important — it prevents the model from adding preamble text before the markdown. Always include:
 ```
 **OUTPUT FORMAT**: Start your response with exactly "---" (the YAML frontmatter opener).
 Do not include ANY text before this.

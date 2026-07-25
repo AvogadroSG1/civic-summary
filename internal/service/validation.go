@@ -128,13 +128,13 @@ func (s *ValidationService) validateContent(content string, result *domain.Valid
 	}
 }
 
-// validateMetaCommentary checks for Claude meta-commentary in the output.
+// validateMetaCommentary checks for model meta-commentary in the output.
 func (s *ValidationService) validateMetaCommentary(content string, result *domain.ValidationResult) {
 	// Only check the first few lines (before frontmatter should be clean).
 	if !markdown.HasFrontmatter(content) {
 		// If no frontmatter, the whole start is suspect.
-		if markdown.HasClaudeMetaCommentary(content) {
-			result.AddError("contains Claude meta-commentary (output must start with frontmatter)")
+		if markdown.HasMetaCommentary(content) {
+			result.AddError("contains model meta-commentary (output must start with frontmatter)")
 		}
 	}
 
@@ -144,7 +144,7 @@ func (s *ValidationService) validateMetaCommentary(content string, result *domai
 		firstLine := strings.TrimSpace(strings.Split(body, "\n")[0])
 		for _, pattern := range []string{"Based on", "I'll ", "I will ", "Let me ", "Here's ", "Here is "} {
 			if strings.HasPrefix(firstLine, pattern) {
-				result.AddError("body starts with Claude meta-commentary: %q", fmt.Sprintf("%.50s...", firstLine))
+				result.AddError("body starts with model meta-commentary: %q", fmt.Sprintf("%.50s...", firstLine))
 				break
 			}
 		}

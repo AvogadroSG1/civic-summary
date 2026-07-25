@@ -6,6 +6,7 @@ import (
 	"github.com/AvogadroSG1/civic-summary/internal/config"
 	"github.com/AvogadroSG1/civic-summary/internal/domain"
 	"github.com/AvogadroSG1/civic-summary/internal/executor"
+	"github.com/AvogadroSG1/civic-summary/internal/llm"
 	"github.com/AvogadroSG1/civic-summary/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +33,7 @@ func getBody(cmd *cobra.Command, cfg *config.Config) (domain.Body, error) {
 }
 
 // buildExecutors creates all executor instances from config.
-func buildExecutors(cfg *config.Config) (*executor.YtDlpExecutor, *executor.WhisperExecutor, *executor.ClaudeExecutor) {
+func buildExecutors(cfg *config.Config) (*executor.YtDlpExecutor, *executor.WhisperExecutor) {
 	commander := executor.NewOsCommander()
 
 	ytdlp := executor.NewYtDlpExecutor(commander, cfg.Tools.YtDlp)
@@ -42,18 +43,32 @@ func buildExecutors(cfg *config.Config) (*executor.YtDlpExecutor, *executor.Whis
 		whisper = executor.NewWhisperExecutor(commander, cfg.Tools.Whisper, cfg.Tools.WhisperModel)
 	}
 
-	claude := executor.NewClaudeExecutor(commander, cfg.Tools.Claude)
+	return ytdlp, whisper
+}
 
-	return ytdlp, whisper, claude
+// buildLLMClientFor returns a resolver that builds the language-model client for
+// a body, honouring any per-body override of the global llm block. The client is
+// built lazily so that commands which never analyse a meeting do not require an
+// API key.
+func buildLLMClientFor(cfg *config.Config) service.LLMClientFor {
+	return func(body domain.Body) (llm.Client, error) {
+		return llm.New(cfg.ResolveLLM(body))
+	}
+}
+
+// buildAnalysisService creates an AnalysisService wired to the configured
+// provider. Both the full pipeline and the standalone analyze command use it.
+func buildAnalysisService(cfg *config.Config) *service.AnalysisService {
+	return service.NewAnalysisService(buildLLMClientFor(cfg), cfg.TemplateDir())
 }
 
 // buildPipeline creates a fully-wired PipelineOrchestrator.
 func buildPipeline(cfg *config.Config) *service.PipelineOrchestrator {
-	ytdlp, whisper, claude := buildExecutors(cfg)
+	ytdlp, whisper := buildExecutors(cfg)
 
 	discovery := service.NewDiscoveryService(ytdlp, cfg)
 	transcription := service.NewTranscriptionService(ytdlp, whisper)
-	analysis := service.NewAnalysisService(claude, cfg.TemplateDir())
+	analysis := buildAnalysisService(cfg)
 	crossref := service.NewCrossReferenceService(cfg)
 	validation := service.NewValidationService()
 	quarantine := service.NewQuarantineService(cfg)

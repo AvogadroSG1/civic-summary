@@ -6,9 +6,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/AvogadroSG1/civic-summary/internal/domain"
 	"github.com/spf13/viper"
+)
+
+// Defaults for the llm block. The model is a current, widely-available Claude
+// model; max_tokens leaves headroom above a typical summary because models that
+// reason before answering spend part of the same budget on reasoning.
+const (
+	defaultModel          = "claude-opus-5"
+	defaultMaxTokens      = 16000
+	defaultTimeoutSeconds = 900
+	defaultLLMRetries     = 2
 )
 
 // Config holds all application configuration.
@@ -18,6 +29,7 @@ type Config struct {
 	MaxRetries       int                    `mapstructure:"max_retries"`
 	BackoffDelays    []int                  `mapstructure:"backoff_delays"`
 	Tools            ToolsConfig            `mapstructure:"tools"`
+	LLM              domain.LLMConfig       `mapstructure:"llm"`
 	Bodies           map[string]domain.Body `mapstructure:"bodies"`
 }
 
@@ -26,7 +38,6 @@ type ToolsConfig struct {
 	YtDlp        string `mapstructure:"ytdlp"`
 	Whisper      string `mapstructure:"whisper"`
 	WhisperModel string `mapstructure:"whisper_model"`
-	Claude       string `mapstructure:"claude"`
 }
 
 // Load reads configuration from the config file and environment variables.
@@ -43,7 +54,13 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("max_retries", 3)
 	v.SetDefault("backoff_delays", []int{5, 20, 60})
 	v.SetDefault("tools.ytdlp", "yt-dlp")
-	v.SetDefault("tools.claude", "claude")
+	v.SetDefault("llm.provider", domain.ProviderAnthropic)
+	v.SetDefault("llm.model", defaultModel)
+	v.SetDefault("llm.max_tokens", defaultMaxTokens)
+	v.SetDefault("llm.max_tokens_field", domain.MaxTokensFieldModern)
+	v.SetDefault("llm.timeout_seconds", defaultTimeoutSeconds)
+	v.SetDefault("llm.max_retries", defaultLLMRetries)
+	v.SetDefault("llm.stream", true)
 
 	// Environment variable binding (12-Factor: config in env)
 	v.SetEnvPrefix("CIVIC_SUMMARY")
@@ -54,7 +71,12 @@ func Load(configPath string) (*Config, error) {
 	_ = v.BindEnv("tools.ytdlp", "CIVIC_SUMMARY_YTDLP")
 	_ = v.BindEnv("tools.whisper", "CIVIC_SUMMARY_WHISPER")
 	_ = v.BindEnv("tools.whisper_model", "CIVIC_SUMMARY_WHISPER_MODEL")
-	_ = v.BindEnv("tools.claude", "CIVIC_SUMMARY_CLAUDE")
+	_ = v.BindEnv("llm.provider", "CIVIC_SUMMARY_LLM_PROVIDER")
+	_ = v.BindEnv("llm.model", "CIVIC_SUMMARY_LLM_MODEL")
+	_ = v.BindEnv("llm.base_url", "CIVIC_SUMMARY_LLM_BASE_URL")
+	_ = v.BindEnv("llm.api_key_env", "CIVIC_SUMMARY_LLM_API_KEY_ENV")
+	_ = v.BindEnv("llm.max_tokens", "CIVIC_SUMMARY_LLM_MAX_TOKENS")
+	_ = v.BindEnv("llm.max_tokens_field", "CIVIC_SUMMARY_LLM_MAX_TOKENS_FIELD")
 
 	if configPath != "" {
 		v.SetConfigFile(configPath)
@@ -92,6 +114,19 @@ func Load(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
+// ResolveLLM returns the language-model configuration for a body: the global
+// llm block with the body's override applied, plus the defaults that depend on
+// other values and so cannot be expressed as static viper defaults.
+func (c *Config) ResolveLLM(body domain.Body) domain.LLMConfig {
+	resolved := body.LLM.Apply(c.LLM)
+
+	if resolved.APIKeyEnv == "" {
+		resolved.APIKeyEnv = domain.DefaultAPIKeyEnv(resolved.Provider)
+	}
+
+	return resolved
+}
+
 // Validate checks that required configuration fields are present.
 func (c *Config) Validate() error {
 	if c.OutputDir == "" {
@@ -119,6 +154,29 @@ func (c *Config) Validate() error {
 		if len(body.Tags) == 0 {
 			return fmt.Errorf("body %q: at least one tag is required", slug)
 		}
+		if err := validateLLM(c.ResolveLLM(body)); err != nil {
+			return fmt.Errorf("body %q: %w", slug, err)
+		}
+	}
+	return nil
+}
+
+// validateLLM checks a body's resolved llm block. The API key is deliberately
+// not checked here: Validate runs on every command, and commands that never
+// reach a model must keep working without credentials.
+func validateLLM(cfg domain.LLMConfig) error {
+	if !slices.Contains(domain.Providers(), cfg.Provider) {
+		return fmt.Errorf("llm.provider %q is not supported; supported: %v", cfg.Provider, domain.Providers())
+	}
+	if cfg.Model == "" {
+		return fmt.Errorf("llm.model is required")
+	}
+	if cfg.MaxTokens <= 0 {
+		return fmt.Errorf("llm.max_tokens must be positive, got %d", cfg.MaxTokens)
+	}
+	if !slices.Contains(domain.MaxTokensFields(), cfg.MaxTokensField) {
+		return fmt.Errorf("llm.max_tokens_field %q is not supported; supported: %v",
+			cfg.MaxTokensField, domain.MaxTokensFields())
 	}
 	return nil
 }

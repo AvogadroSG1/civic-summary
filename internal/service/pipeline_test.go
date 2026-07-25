@@ -114,18 +114,18 @@ func pipelineConfig(t *testing.T) *config.Config {
 	}
 }
 
-// buildPipelineOrchestrator creates a fully-wired pipeline with mock executors.
-func buildPipelineOrchestrator(t *testing.T, cfg *config.Config, mock *executor.MockCommander) *service.PipelineOrchestrator {
+// buildPipelineOrchestrator creates a fully-wired pipeline with mock executors
+// for the external binaries and a stub language-model client.
+func buildPipelineOrchestrator(t *testing.T, cfg *config.Config, mock *executor.MockCommander, model *stubClient) *service.PipelineOrchestrator {
 	t.Helper()
 
 	ytdlp := executor.NewYtDlpExecutor(mock, "yt-dlp")
-	claude := executor.NewClaudeExecutor(mock, "claude")
 
 	tmplDir := setupTemplateDir(t)
 
 	discovery := service.NewDiscoveryService(ytdlp, cfg)
 	transcription := service.NewTranscriptionService(ytdlp, nil)
-	analysis := service.NewAnalysisService(claude, tmplDir)
+	analysis := service.NewAnalysisService(stubClientFor(model), tmplDir)
 	crossref := service.NewCrossReferenceService(cfg)
 	validation := service.NewValidationService()
 	quarantine := service.NewQuarantineService(cfg)
@@ -150,7 +150,7 @@ func TestPipelineOrchestrator_ProcessBody_DryRun(t *testing.T) {
 	// Discovery finds 2 meetings.
 	mockDiscoveryResponse(mock, "abc123|February 04, 2025 | Mayor & Council Regular Session\ndef456|January 21, 2025 | Mayor & Council Work Session\n")
 
-	pipeline := buildPipelineOrchestrator(t, cfg, mock)
+	pipeline := buildPipelineOrchestrator(t, cfg, mock, &stubClient{response: validSummaryContent()})
 	body, _ := cfg.GetBody("hagerstown")
 
 	stats, err := pipeline.ProcessBody(context.Background(), body, true)
@@ -189,12 +189,7 @@ func TestPipelineOrchestrator_ProcessBody_Success(t *testing.T) {
 	srtContent := generateWords(600) // Meet minimum word count.
 	require.NoError(t, os.WriteFile(srtPath, []byte(srtContent), 0o644))
 
-	// Claude: return valid summary content.
-	mock.OnCommand("claude", &executor.CommandResult{
-		Stdout: validSummaryContent(),
-	}, nil)
-
-	pipeline := buildPipelineOrchestrator(t, cfg, mock)
+	pipeline := buildPipelineOrchestrator(t, cfg, mock, &stubClient{response: validSummaryContent()})
 
 	stats, err := pipeline.ProcessBody(context.Background(), body, false)
 	require.NoError(t, err)
@@ -235,10 +230,7 @@ func TestPipelineOrchestrator_ProcessBody_AnalysisFails_Quarantined(t *testing.T
 		[]byte(generateWords(600)), 0o644,
 	))
 
-	// Claude: return an error.
-	mock.OnCommand("claude", nil, fmt.Errorf("API rate limit exceeded"))
-
-	pipeline := buildPipelineOrchestrator(t, cfg, mock)
+	pipeline := buildPipelineOrchestrator(t, cfg, mock, &stubClient{err: fmt.Errorf("API rate limit exceeded")})
 
 	stats, err := pipeline.ProcessBody(context.Background(), body, false)
 	require.NoError(t, err) // ProcessBody itself doesn't fail, individual meetings do.
@@ -289,7 +281,7 @@ func TestPipelineOrchestrator_ProcessAll_MultipleBodies(t *testing.T) {
 	// No meetings found for any body — tests ProcessAll loop with empty results.
 	mock.DefaultResult = &executor.CommandResult{Stdout: ""}
 
-	pipeline := buildPipelineOrchestrator(t, cfg, mock)
+	pipeline := buildPipelineOrchestrator(t, cfg, mock, &stubClient{response: validSummaryContent()})
 
 	allStats, err := pipeline.ProcessAll(context.Background(), true)
 	require.NoError(t, err)
@@ -337,7 +329,7 @@ func TestPipelineOrchestrator_ProcessAll_OneBodyFails(t *testing.T) {
 	// The mock will return empty for all yt-dlp calls.
 	mock.DefaultResult = &executor.CommandResult{Stdout: ""}
 
-	pipeline := buildPipelineOrchestrator(t, cfg, mock)
+	pipeline := buildPipelineOrchestrator(t, cfg, mock, &stubClient{response: validSummaryContent()})
 
 	allStats, err := pipeline.ProcessAll(context.Background(), false)
 	require.NoError(t, err)
@@ -385,12 +377,8 @@ func TestPipelineOrchestrator_RetryQuarantined_Success(t *testing.T) {
 		[]byte(generateWords(600)), 0o644,
 	))
 
-	// Claude returns valid summary.
-	mock.OnCommand("claude", &executor.CommandResult{
-		Stdout: validSummaryContent(),
-	}, nil)
-
-	pipeline := buildPipelineOrchestrator(t, cfg, mock)
+	// The model returns a valid summary.
+	pipeline := buildPipelineOrchestrator(t, cfg, mock, &stubClient{response: validSummaryContent()})
 
 	stats, err := pipeline.ProcessBody(context.Background(), body, false)
 	require.NoError(t, err)

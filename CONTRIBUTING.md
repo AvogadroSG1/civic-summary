@@ -9,7 +9,7 @@ Thanks for your interest in contributing! This guide will help you get set up an
 - Go 1.25+
 - golangci-lint (for `make lint`)
 - yt-dlp (for integration tests or manual testing)
-- Claude CLI (for integration tests or manual testing)
+- An LLM API key in the environment (for manual end-to-end testing); see the `llm` block in `config.example.yaml`
 
 ### Getting Started
 
@@ -68,11 +68,16 @@ civic-summary/
 │   │   ├── mock.go             # MockCommander for tests
 │   │   ├── ytdlp.go            # yt-dlp wrapper
 │   │   ├── whisper.go          # Whisper wrapper
-│   │   └── claude.go           # Claude CLI wrapper
+│   │
+│   ├── llm/                    # Language model clients (HTTP, not shell)
+│   │   ├── llm.go              # Client interface + New() provider factory
+│   │   ├── anthropic.go        # Anthropic-compatible /v1/messages
+│   │   ├── openai.go           # OpenAI-compatible /v1/chat/completions
+│   │   └── errors.go           # Provider-independent error classification
 │   │
 │   ├── markdown/               # Markdown processing utilities
 │   │   ├── frontmatter.go      # YAML frontmatter parse/inject
-│   │   ├── sanitize.go         # Strip Claude meta-commentary
+│   │   ├── sanitize.go         # Strip model meta-commentary
 │   │   └── wikilinks.go        # Obsidian [[wikilink]] generation
 │   │
 │   ├── output/                 # Terminal output and notifications
@@ -85,7 +90,7 @@ civic-summary/
 │       ├── pipeline.go         # PipelineOrchestrator (wires all stages)
 │       ├── discovery.go        # Find new videos from YouTube
 │       ├── transcription.go    # Download/generate transcripts
-│       ├── analysis.go         # Send transcript to Claude, get summary
+│       ├── analysis.go         # Send transcript to the model, get summary
 │       ├── crossref.go         # Inject Obsidian wikilinks
 │       ├── validation.go       # Validate summary quality
 │       ├── quarantine.go       # Manage failed meetings
@@ -118,7 +123,7 @@ make coverage
 
 ### How MockCommander Works
 
-All external tool calls (yt-dlp, whisper, claude) go through the `Commander` interface defined in `internal/executor/executor.go`:
+All external binary calls (yt-dlp, whisper) go through the `Commander` interface defined in `internal/executor/executor.go`:
 
 ```go
 type Commander interface {

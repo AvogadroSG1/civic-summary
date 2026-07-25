@@ -92,3 +92,53 @@ func TestNewConfig(t *testing.T) {
 	assert.Equal(t, 20*time.Second, cfg.BackoffDelays[1])
 	assert.Equal(t, 60*time.Second, cfg.BackoffDelays[2])
 }
+
+// permanentErr is an error that declares itself unretryable, matching the shape
+// internal/llm errors use.
+type permanentErr struct{ permanent bool }
+
+func (e permanentErr) Error() string   { return "permanent test error" }
+func (e permanentErr) Permanent() bool { return e.permanent }
+
+func TestDo_StopsOnPermanentError(t *testing.T) {
+	cfg := retry.NewConfig(3, []int{0, 0, 0})
+	attempts := 0
+
+	err := retry.Do(context.Background(), cfg, "test", func() error {
+		attempts++
+		return permanentErr{permanent: true}
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 1, attempts, "a permanent failure should not be retried")
+	assert.Contains(t, err.Error(), "permanent failure in test")
+}
+
+func TestDo_RetriesWhenPermanentIsFalse(t *testing.T) {
+	cfg := retry.NewConfig(2, []int{0, 0})
+	attempts := 0
+
+	err := retry.Do(context.Background(), cfg, "test", func() error {
+		attempts++
+		return permanentErr{permanent: false}
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 3, attempts, "a retryable failure should use every attempt")
+	assert.Contains(t, err.Error(), "retries exhausted")
+}
+
+// TestDo_StopsOnWrappedPermanentError covers the real call path, where the
+// pipeline wraps the analysis error with context before it reaches retry.Do.
+func TestDo_StopsOnWrappedPermanentError(t *testing.T) {
+	cfg := retry.NewConfig(3, []int{0, 0, 0})
+	attempts := 0
+
+	err := retry.Do(context.Background(), cfg, "test", func() error {
+		attempts++
+		return fmt.Errorf("analysis: %w", permanentErr{permanent: true})
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 1, attempts)
+}
