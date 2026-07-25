@@ -16,6 +16,10 @@ type Body struct {
 	MeetingTypes    []string `yaml:"meeting_types" mapstructure:"meeting_types"`
 	Author          string   `yaml:"author" mapstructure:"author"`
 	FooterText      string   `yaml:"footer_text" mapstructure:"footer_text"`
+
+	// LLM optionally overrides the global llm block for this body, so one
+	// body can use a larger-context or cheaper model than the rest.
+	LLM *LLMOverride `yaml:"llm" mapstructure:"llm"`
 }
 
 // DiscoveryURL returns the URL used to discover videos for this body.
