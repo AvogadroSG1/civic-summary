@@ -2,7 +2,9 @@
 
 Automated citizen-friendly summaries from government meeting videos.
 
-civic-summary watches YouTube playlists for new government meeting recordings, transcribes them, generates plain-language summaries using Claude, and outputs validated Obsidian-compatible markdown files — all driven by configuration, no code changes needed to add new government bodies.
+civic-summary watches YouTube playlists for new government meeting recordings, transcribes them, generates plain-language summaries with a large language model, and outputs validated Obsidian-compatible markdown files — all driven by configuration, no code changes needed to add new government bodies.
+
+Analysis runs over HTTP against any **Anthropic-compatible** or **OpenAI-compatible** endpoint, so you can use the first-party APIs, a gateway such as OpenRouter or Groq, or a model you host yourself with Ollama, vLLM, or LM Studio.
 
 ## How It Works
 
@@ -12,7 +14,7 @@ flowchart LR
 
     D["**Discovery**\n_(yt-dlp)_"]
     T["**Transcription**\n_(captions / whisper)_"]
-    A["**Analysis**\n_(Claude CLI)_"]
+    A["**Analysis**\n_(LLM API)_"]
     CR["**CrossRef**\n_(wikilinks)_"]
     V["**Validation**\n_(frontmatter, sections,\nword count)_"]
     O["**Output**\n_(Obsidian markdown)_"]
@@ -28,7 +30,7 @@ Each stage is independently runnable via CLI commands, or the full pipeline can 
 |------|----------|---------|---------|
 | Go 1.25+ | Yes | [go.dev/dl](https://go.dev/dl/) | Build the binary |
 | yt-dlp | Yes | `brew install yt-dlp` | Download videos and captions |
-| Claude CLI | Yes | [docs.anthropic.com](https://docs.anthropic.com/en/docs/claude-code) | AI-powered meeting analysis |
+| An LLM API key | Yes | [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/) | AI-powered meeting analysis. Any compatible endpoint works, including a local server. |
 | Whisper | No | `brew install whisper-cpp` | Fallback when captions unavailable |
 | golangci-lint | Dev only | `brew install golangci-lint` | Code linting |
 
@@ -51,22 +53,29 @@ Each stage is independently runnable via CLI commands, or the full pipeline can 
    ```
    This creates `~/.civic-summary/` with a starter config copied from `config.example.yaml`.
 
-4. **Edit your configuration**
+4. **Export your API key**
+   ```bash
+   export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY for an OpenAI-compatible endpoint
+   ```
+   The key is read from the environment, never from the config file.
+
+5. **Edit your configuration**
    ```bash
    $EDITOR ~/.civic-summary/config.yaml
    ```
-   Set `output_dir` to where you want summaries written, and configure at least one government body. See [Configuration Reference](#configuration-reference) below.
+   Set `output_dir` to where you want summaries written, pick a model in the `llm` block, and configure at least one government body. See [Configuration Reference](#configuration-reference) below.
 
-5. **Add a prompt template**
+6. **Add a prompt template**
    ```bash
    cp templates/hagerstown.prompt.tmpl ~/.civic-summary/templates/my-council.prompt.tmpl
    # Edit the template to match your body's meeting structure
    ```
    See [docs/prompt-template-guide.md](docs/prompt-template-guide.md) for customization details.
 
-6. **Build and run**
+7. **Build and verify**
    ```bash
    make build
+   ./civic-summary status                       # confirms the model is reachable
    ./civic-summary discover --body=my-city-council
    ```
 
@@ -137,7 +146,7 @@ Add a new entry under `bodies:` in `~/.civic-summary/config.yaml`. See [config.e
 | `validate <file>` | Phase 5: Check quality requirements | `civic-summary validate summary.md --body=hagerstown` |
 | `bodies list` | List configured bodies | `civic-summary bodies list` |
 | `bodies show <slug>` | Show body details | `civic-summary bodies show hagerstown` |
-| `status` | Show processing status | `civic-summary status --body=hagerstown` |
+| `status` | Show processing status and check the model is reachable | `civic-summary status --body=hagerstown` |
 | `quarantine list` | List failed meetings | `civic-summary quarantine list --body=hagerstown` |
 | `quarantine retry` | Retry failed meetings | `civic-summary quarantine retry --body=hagerstown` |
 | `quarantine remove <id>` | Remove from quarantine | `civic-summary quarantine remove abc123 --body=hagerstown` |
@@ -145,6 +154,50 @@ Add a new entry under `bodies:` in `~/.civic-summary/config.yaml`. See [config.e
 | `completion` | Generate shell completions | `civic-summary completion zsh` |
 
 **Global flags:** `--config <path>` (custom config file), `--verbose` / `-v` (debug output)
+
+## Choosing a Model
+
+The `llm` block selects the provider, model, and endpoint. `provider` names a wire
+protocol rather than a vendor, so each one covers many services:
+
+| Provider | Endpoint | Works with |
+|----------|----------|------------|
+| `anthropic` | `POST /v1/messages` | The Anthropic API, and any Anthropic-compatible gateway |
+| `openai` | `POST /v1/chat/completions` | The OpenAI API, Azure OpenAI, OpenRouter, Groq, Together, Ollama, vLLM, LM Studio, and other compatible servers |
+
+```yaml
+# Anthropic API (the default)
+llm:
+  provider: anthropic
+  model: claude-opus-5
+
+# A local model served by Ollama
+llm:
+  provider: openai
+  model: llama3.3
+  base_url: http://localhost:11434/v1
+  api_key_env: OLLAMA_API_KEY      # Ollama ignores the value, but one must be set
+  max_tokens_field: max_tokens     # older servers do not accept max_completion_tokens
+```
+
+Any body can override the global block, which is useful when one body's meetings
+need a larger context window than the rest:
+
+```yaml
+bodies:
+  my-county-bocc:
+    # ...
+    llm:
+      model: claude-sonnet-5
+      max_tokens: 32000
+```
+
+Run `civic-summary status` to confirm the resolved model is reachable before
+starting a run. It sends one minimal request per body; `--skip-llm-check` stays
+offline.
+
+> **Note on `temperature`:** leave it unset. Current Claude models (Opus 5,
+> Sonnet 5, Opus 4.8/4.7) reject sampling parameters with HTTP 400.
 
 ## Configuration Reference
 
@@ -165,7 +218,31 @@ See [`config.example.yaml`](config.example.yaml) for a fully commented example w
 | `CIVIC_SUMMARY_YTDLP` | `tools.ytdlp` |
 | `CIVIC_SUMMARY_WHISPER` | `tools.whisper` |
 | `CIVIC_SUMMARY_WHISPER_MODEL` | `tools.whisper_model` |
-| `CIVIC_SUMMARY_CLAUDE` | `tools.claude` |
+| `CIVIC_SUMMARY_LLM_PROVIDER` | `llm.provider` |
+| `CIVIC_SUMMARY_LLM_MODEL` | `llm.model` |
+| `CIVIC_SUMMARY_LLM_BASE_URL` | `llm.base_url` |
+| `CIVIC_SUMMARY_LLM_API_KEY_ENV` | `llm.api_key_env` |
+| `CIVIC_SUMMARY_LLM_MAX_TOKENS` | `llm.max_tokens` |
+| `CIVIC_SUMMARY_LLM_MAX_TOKENS_FIELD` | `llm.max_tokens_field` |
+
+The API key itself is never read from the config file. `llm.api_key_env` names the
+environment variable to read it from, defaulting to `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY` depending on the provider.
+
+### Upgrading from the Claude CLI
+
+Earlier versions shelled out to the `claude` CLI and configured it with
+`tools.claude`. Analysis now goes over HTTP, so:
+
+1. Delete `tools.claude` from your config — it is no longer read.
+2. Add an `llm` block (or accept the defaults, which use the Anthropic API with
+   `claude-opus-5`).
+3. Export an API key: `export ANTHROPIC_API_KEY=sk-ant-...`. A Claude Code
+   subscription does not cover API access; get a key from the
+   [Anthropic Console](https://console.anthropic.com/).
+4. Run `civic-summary status` to confirm the new setup.
+
+The `claude` CLI is no longer a prerequisite.
 
 ## Scheduling (macOS)
 
@@ -179,6 +256,7 @@ internal/
   config/               # Viper config loading, validation, env binding
   domain/               # DDD types: Meeting, Body, Transcript, Summary
   executor/             # Commander interface for shelling out to tools
+  llm/                  # Anthropic- and OpenAI-compatible model clients
   markdown/             # Frontmatter parsing, sanitization, wikilinks
   output/               # Logging, terminal formatting, notifications
   retry/                # Generic retry with exponential backoff
