@@ -3,6 +3,7 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -54,8 +55,31 @@ func Do(ctx context.Context, cfg Config, operation string, fn func() error) erro
 			"attempt", attempt+1,
 			"error", lastErr,
 		)
+
+		if isPermanent(lastErr) {
+			slog.Warn("not retrying permanent failure",
+				"operation", operation,
+				"error", lastErr,
+			)
+			return fmt.Errorf("permanent failure in %s: %w", operation, lastErr)
+		}
 	}
 	return fmt.Errorf("all %d retries exhausted for %s: %w", cfg.MaxRetries+1, operation, lastErr)
+}
+
+// permanentError is satisfied by errors that report whether retrying could ever
+// succeed. Declaring it here rather than importing a concrete error type keeps
+// this package dependency-free.
+type permanentError interface {
+	Permanent() bool
+}
+
+// isPermanent reports whether err declares itself unretryable. A bad API key or
+// a misspelled model name fails identically every time, and in this pipeline a
+// retry re-downloads and re-transcribes the video first.
+func isPermanent(err error) bool {
+	var permanent permanentError
+	return errors.As(err, &permanent) && permanent.Permanent()
 }
 
 // backoffDelay returns the delay for a given retry index.
