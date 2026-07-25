@@ -4,15 +4,55 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/AvogadroSG1/civic-summary/internal/domain"
-	"github.com/AvogadroSG1/civic-summary/internal/executor"
+	"github.com/AvogadroSG1/civic-summary/internal/llm"
 	"github.com/AvogadroSG1/civic-summary/internal/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// stubClient is an llm.Client that records the prompts it receives, which is
+// what makes the rendered prompt assertable.
+type stubClient struct {
+	response string
+	err      error
+	prompts  []string
+}
+
+func (s *stubClient) Complete(_ context.Context, prompt string) (string, error) {
+	s.prompts = append(s.prompts, prompt)
+	if s.err != nil {
+		return "", s.err
+	}
+	return s.response, nil
+}
+
+func (s *stubClient) Ping(context.Context) error { return s.err }
+
+func (s *stubClient) Describe() string { return "stub/test-model" }
+
+// lastPrompt returns the most recent prompt, failing if none was sent.
+func (s *stubClient) lastPrompt(t *testing.T) string {
+	t.Helper()
+	require.NotEmpty(t, s.prompts, "no prompt was sent to the model")
+	return s.prompts[len(s.prompts)-1]
+}
+
+// stubClientFor returns a resolver that always yields stub.
+func stubClientFor(stub *stubClient) service.LLMClientFor {
+	return func(domain.Body) (llm.Client, error) { return stub, nil }
+}
+
+// newAnalysisService wires a service around a stub returning response.
+func newAnalysisService(t *testing.T, response string) (*service.AnalysisService, *stubClient) {
+	t.Helper()
+	stub := &stubClient{response: response}
+	return service.NewAnalysisService(stubClientFor(stub), setupTemplateDir(t)), stub
+}
 
 // testMeeting returns a deterministic meeting for analysis tests.
 func testMeeting() domain.Meeting {
@@ -88,94 +128,75 @@ func setupTemplateDir(t *testing.T) string {
 }
 
 func TestAnalysisService_Analyze(t *testing.T) {
-	tmplDir := setupTemplateDir(t)
-
-	// Mock Claude returning raw markdown with preamble that should be sanitized.
-	mock := executor.NewMockCommander()
-	mock.DefaultResult = &executor.CommandResult{
-		Stdout: "Here's the summary:\n---\ndate: 2025-02-05\nauthor: Peter O'Connor\ntags:\n  - City-Council\n---\n# Meeting Summary\nContent here.",
-	}
-
-	claude := executor.NewClaudeExecutor(mock, "claude")
-	svc := service.NewAnalysisService(claude, tmplDir)
+	svc, _ := newAnalysisService(t,
+		"Here's the summary:\n---\ndate: 2025-02-05\nauthor: Peter O'Connor\ntags:\n  - City-Council\n---\n# Meeting Summary\nContent here.")
 
 	summary, err := svc.Analyze(context.Background(), testMeeting(), testTranscript(), testHagerstownBody())
 	require.NoError(t, err)
 
 	// Sanitize should strip the "Here's the summary:" preamble.
-	assert.True(t, len(summary.Content) > 0, "summary should not be empty")
+	assert.NotEmpty(t, summary.Content)
 	assert.Contains(t, summary.Content, "---")
 	assert.NotContains(t, summary.Content, "Here's the summary")
 }
 
 func TestAnalysisService_Analyze_CleanOutput(t *testing.T) {
-	tmplDir := setupTemplateDir(t)
-
-	// Mock Claude returning clean output (starts with frontmatter).
-	mock := executor.NewMockCommander()
-	mock.DefaultResult = &executor.CommandResult{
-		Stdout: "---\ndate: 2025-02-05\n---\n# Summary\nBody content.",
-	}
-
-	claude := executor.NewClaudeExecutor(mock, "claude")
-	svc := service.NewAnalysisService(claude, tmplDir)
+	svc, _ := newAnalysisService(t, "---\ndate: 2025-02-05\n---\n# Summary\nBody content.")
 
 	summary, err := svc.Analyze(context.Background(), testMeeting(), testTranscript(), testHagerstownBody())
 	require.NoError(t, err)
 
 	// Already clean — should pass through unchanged.
-	assert.True(t, summary.Content[0:3] == "---", "should start with frontmatter")
+	assert.True(t, strings.HasPrefix(summary.Content, "---"), "should start with frontmatter")
 }
 
-func TestAnalysisService_Analyze_ClaudeError(t *testing.T) {
-	tmplDir := setupTemplateDir(t)
-
-	mock := executor.NewMockCommander()
-	mock.OnCommand("claude", nil, assert.AnError)
-
-	claude := executor.NewClaudeExecutor(mock, "claude")
-	svc := service.NewAnalysisService(claude, tmplDir)
+func TestAnalysisService_Analyze_ModelError(t *testing.T) {
+	stub := &stubClient{err: assert.AnError}
+	svc := service.NewAnalysisService(stubClientFor(stub), setupTemplateDir(t))
 
 	_, err := svc.Analyze(context.Background(), testMeeting(), testTranscript(), testHagerstownBody())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "claude analysis")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "analysis")
+}
+
+// TestAnalysisService_Analyze_ClientError covers a provider that cannot even be
+// constructed, such as a missing API key.
+func TestAnalysisService_Analyze_ClientError(t *testing.T) {
+	failing := func(domain.Body) (llm.Client, error) { return nil, assert.AnError }
+	svc := service.NewAnalysisService(failing, setupTemplateDir(t))
+
+	_, err := svc.Analyze(context.Background(), testMeeting(), testTranscript(), testHagerstownBody())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "building llm client")
 }
 
 func TestAnalysisService_BuildPrompt_Hagerstown(t *testing.T) {
-	tmplDir := setupTemplateDir(t)
-
-	// We need Claude to succeed so we can verify the prompt was built correctly.
-	// The prompt is passed as stdin to Claude; we can inspect it via mock calls.
-	mock := executor.NewMockCommander()
-	mock.DefaultResult = &executor.CommandResult{
-		Stdout: "---\ndate: 2025-02-05\n---\n# Summary",
-	}
-
-	claude := executor.NewClaudeExecutor(mock, "claude")
-	svc := service.NewAnalysisService(claude, tmplDir)
-
+	svc, stub := newAnalysisService(t, "---\ndate: 2025-02-05\n---\n# Summary")
 	meeting := testMeeting()
 	body := testHagerstownBody()
 
 	_, err := svc.Analyze(context.Background(), meeting, testTranscript(), body)
 	require.NoError(t, err)
 
-	// The mock records calls — verify Claude was invoked.
-	require.Len(t, mock.Calls, 1)
-	assert.Contains(t, mock.Calls[0], "claude")
+	prompt := stub.lastPrompt(t)
+	assert.Contains(t, prompt, body.Name)
+	assert.Contains(t, prompt, "February 04, 2025", "human-readable meeting date")
+	assert.Contains(t, prompt, "2025-02-04", "ISO meeting date")
+	assert.Contains(t, prompt, "Regular Session", "meeting type")
+	assert.Contains(t, prompt, "https://www.youtube.com/watch?v=abc123", "video URL")
+	assert.Contains(t, prompt, body.Author)
+	assert.Contains(t, prompt, testTranscript().Content, "the transcript itself")
+	assert.Contains(t, prompt, "- City-Council")
+	assert.Contains(t, prompt, "- Hagerstown")
+	// Body-specific wording confirms the right template was rendered.
+	assert.Contains(t, prompt, "Citizen Comments")
+	assert.Contains(t, prompt, "Input Requested from Council")
 }
 
 func TestAnalysisService_BuildPrompt_BOCC(t *testing.T) {
-	tmplDir := setupTemplateDir(t)
-
-	mock := executor.NewMockCommander()
-	mock.DefaultResult = &executor.CommandResult{
-		Stdout: "---\ndate: 2025-02-05\n---\n# Summary",
-	}
-
-	claude := executor.NewClaudeExecutor(mock, "claude")
-	svc := service.NewAnalysisService(claude, tmplDir)
-
+	svc, stub := newAnalysisService(t, "---\ndate: 2025-02-05\n---\n# Summary")
 	boccMeeting := domain.Meeting{
 		VideoID:     "xyz789",
 		Title:       "Board of County Commissioners Regular Meeting - January 7, 2025",
@@ -183,71 +204,66 @@ func TestAnalysisService_BuildPrompt_BOCC(t *testing.T) {
 		MeetingType: "Regular Meeting",
 		BodySlug:    "bocc",
 	}
+	body := testBOCCBody()
 
-	_, err := svc.Analyze(context.Background(), boccMeeting, testTranscript(), testBOCCBody())
+	_, err := svc.Analyze(context.Background(), boccMeeting, testTranscript(), body)
 	require.NoError(t, err)
 
-	require.Len(t, mock.Calls, 1)
-	assert.Contains(t, mock.Calls[0], "claude")
+	prompt := stub.lastPrompt(t)
+	assert.Contains(t, prompt, body.Name)
+	assert.Contains(t, prompt, "January 07, 2025")
+	assert.Contains(t, prompt, "https://www.youtube.com/watch?v=xyz789")
+	assert.Contains(t, prompt, "- BOCC")
+	assert.Contains(t, prompt, "- Washington-County")
+	// The BOCC template addresses commissioners, not a council.
+	assert.Contains(t, prompt, "Commissioners")
 }
 
+// TestAnalysisService_MeetingTypeTag checks the derived tag that gets appended
+// to the body's configured tags.
 func TestAnalysisService_MeetingTypeTag(t *testing.T) {
-	// meetingTypeTag is unexported, so we test it indirectly through Analyze.
-	// The tags injected into the template contain the meeting type tag.
-	// We verify by checking that different meeting types produce different outputs.
-	tmplDir := setupTemplateDir(t)
-
 	tests := []struct {
 		name        string
 		meetingType string
+		wantTag     string
 	}{
-		{"work session", "Work Session"},
-		{"special meeting", "Special Meeting"},
-		{"evening meeting", "Evening Meeting"},
-		{"regular session (default)", "Regular Session"},
-		{"unknown defaults to regular", "Board Meeting"},
+		{"work session", "Work Session", "- Work-Session"},
+		{"special meeting", "Special Meeting", "- Special-Meeting"},
+		{"evening meeting", "Evening Meeting", "- Evening-Meeting"},
+		{"regular session", "Regular Session", "- Regular-Session"},
+		{"unknown defaults to regular session", "Board Meeting", "- Regular-Session"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := executor.NewMockCommander()
-			mock.DefaultResult = &executor.CommandResult{
-				Stdout: "---\ndate: 2025-02-05\n---\n# Summary",
-			}
-
-			claude := executor.NewClaudeExecutor(mock, "claude")
-			svc := service.NewAnalysisService(claude, tmplDir)
-
+			svc, stub := newAnalysisService(t, "---\ndate: 2025-02-05\n---\n# Summary")
 			meeting := testMeeting()
 			meeting.MeetingType = tt.meetingType
 
 			_, err := svc.Analyze(context.Background(), meeting, testTranscript(), testHagerstownBody())
-			assert.NoError(t, err)
+			require.NoError(t, err)
+
+			assert.Contains(t, stub.lastPrompt(t), tt.wantTag)
 		})
 	}
 }
 
 func TestAnalysisService_TemplateMissing(t *testing.T) {
 	// Point to an empty temp dir — no templates.
-	emptyDir := t.TempDir()
-
-	mock := executor.NewMockCommander()
-	mock.DefaultResult = &executor.CommandResult{Stdout: "output"}
-
-	claude := executor.NewClaudeExecutor(mock, "claude")
-	svc := service.NewAnalysisService(claude, emptyDir)
+	stub := &stubClient{response: "output"}
+	svc := service.NewAnalysisService(stubClientFor(stub), t.TempDir())
 
 	_, err := svc.Analyze(context.Background(), testMeeting(), testTranscript(), testHagerstownBody())
-	assert.Error(t, err)
+
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "building prompt")
+	assert.Empty(t, stub.prompts, "no request should be made when the template is missing")
 }
 
 func TestAnalysisService_Sanitize_MetaCommentary(t *testing.T) {
-	tmplDir := setupTemplateDir(t)
-
 	tests := []struct {
 		name           string
-		claudeOutput   string
+		modelOutput    string
 		expectContains string
 		expectMissing  string
 	}{
@@ -273,11 +289,7 @@ func TestAnalysisService_Sanitize_MetaCommentary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := executor.NewMockCommander()
-			mock.DefaultResult = &executor.CommandResult{Stdout: tt.claudeOutput}
-
-			claude := executor.NewClaudeExecutor(mock, "claude")
-			svc := service.NewAnalysisService(claude, tmplDir)
+			svc, _ := newAnalysisService(t, tt.modelOutput)
 
 			summary, err := svc.Analyze(context.Background(), testMeeting(), testTranscript(), testHagerstownBody())
 			require.NoError(t, err)

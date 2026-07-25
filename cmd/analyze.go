@@ -6,19 +6,18 @@ import (
 	"time"
 
 	"github.com/AvogadroSG1/civic-summary/internal/domain"
-	"github.com/AvogadroSG1/civic-summary/internal/executor"
 	"github.com/AvogadroSG1/civic-summary/internal/output"
-	"github.com/AvogadroSG1/civic-summary/internal/service"
 	"github.com/spf13/cobra"
 )
 
 var analyzeCmd = &cobra.Command{
 	Use:   "analyze <video-id>",
 	Short: "Generate a summary for a specific video",
-	Long: `Phase 3 only: sends the transcript to Claude CLI and generates
-a citizen-friendly markdown summary.
+	Long: `Phase 3 only: sends the transcript to the configured language model and
+generates a citizen-friendly markdown summary.
 
-Requires a transcript file to already exist in the output directory.`,
+Requires a transcript file to already exist in the output directory, and an API
+key in the environment variable named by llm.api_key_env.`,
 	Example: `  civic-summary analyze abc123 --body=hagerstown --date=2025-02-04
   civic-summary analyze xyz789 --body=bocc --date=2025-10-21 --transcript=/path/to/file.srt`,
 	Args: cobra.ExactArgs(1),
@@ -69,11 +68,7 @@ Requires a transcript file to already exist in the output directory.`,
 			Source:  domain.TranscriptSourceCaptions,
 		}
 
-		commander := executor.NewOsCommander()
-		claude := executor.NewClaudeExecutor(commander, cfg.Tools.Claude)
-		analysis := service.NewAnalysisService(claude, cfg.TemplateDir())
-
-		summary, err := analysis.Analyze(cmd.Context(), meeting, transcript, body)
+		summary, err := buildAnalysisService(cfg).Analyze(cmd.Context(), meeting, transcript, body)
 		if err != nil {
 			return err
 		}
